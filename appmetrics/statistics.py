@@ -90,6 +90,9 @@ def sum(data, start=0):
     >>> sum(data)
     Decimal('0.6963')
 
+    >>> sum([1, float("nan")])
+    nan
+
     """
     n, d = _exact_ratio(start)
     T = type(start)
@@ -124,12 +127,20 @@ def _exact_ratio(x):
     >>> _exact_ratio(0.25)
     (1, 4)
 
+    >>> _exact_ratio(None)
+    Traceback (most recent call last):
+        ...
+    TypeError: can't convert type 'NoneType' to numerator/denominator
+
+    >>> _exact_ratio(float("nan"))
+    (nan, None)
+
     x is expected to be an int, Fraction, Decimal or float.
     """
     try:
         try:
             # int, Fraction
-            return (x.numerator, x.denominator)
+            return x.numerator, x.denominator
         except AttributeError:
             # float
             try:
@@ -143,12 +154,6 @@ def _exact_ratio(x):
                     raise TypeError(msg.format(type(x).__name__))
     except (OverflowError, ValueError):
         # INF or NAN
-        if __debug__:
-            # Decimal signalling NANs cannot be converted to float :-(
-            if isinstance(x, Decimal):
-                assert not x.is_finite()
-            else:
-                assert not isfinite(x)
         return (x, None)
 
 
@@ -159,6 +164,11 @@ def _decimal_to_ratio(d):
     >>> from decimal import Decimal
     >>> _decimal_to_ratio(Decimal("2.6"))
     (26, 10)
+
+    >>> _decimal_to_ratio(Decimal("nan"))
+    Traceback (most recent call last):
+        ...
+    ValueError
 
     """
     sign, digits, exp = d.as_tuple()
@@ -179,6 +189,31 @@ def _coerce_types(T1, T2):
 
     >>> _coerce_types(int, float)
     <type 'float'>
+
+    >>> class I1(int): pass
+    >>> class I2(I1): pass
+    >>> class I3(I1): pass
+    >>> class I4(I2): pass
+
+    >>> _coerce_types(I1, I2)
+    <class 'appmetrics.statistics.I2'>
+
+    >>> _coerce_types(I2, I1)
+    <class 'appmetrics.statistics.I2'>
+
+    >>> _coerce_types(I1, float)
+    <type 'float'>
+
+    >>> _coerce_types(float, I1)
+    <type 'float'>
+
+    >>> _coerce_types(I2, I3)
+    <class 'appmetrics.statistics.I3'>
+
+    >>> _coerce_types(I4, I3)
+    Traceback (most recent call last):
+        ...
+    TypeError: cannot coerce types <class 'appmetrics.statistics.I4'> and <class 'appmetrics.statistics.I3'>
 
     Coercion is performed according to this table, where "N/A" means
     that a TypeError exception is raised.
@@ -213,7 +248,18 @@ def _coerce_types(T1, T2):
 
 
 def _counts(data):
-    # Generate a table of sorted (value, frequency) pairs.
+    """
+    Generate a table of sorted (value, frequency) pairs.
+
+    >>> _counts(None)
+    Traceback (most recent call last):
+        ...
+    TypeError: None is not iterable
+
+    >>> _counts([])
+    []
+
+    """
     if data is None:
         raise TypeError('None is not iterable')
     table = collections.Counter(data).most_common()
@@ -243,6 +289,9 @@ def mean(data):
     >>> from decimal import Decimal as D
     >>> mean([D("0.5"), D("0.75"), D("0.625"), D("0.375")])
     Decimal('0.5625')
+
+    >>> mean(iter([1, 2, 3]))
+    2.0
 
     If ``data`` is empty, StatisticsError will be raised.
     """
@@ -290,6 +339,12 @@ def median_low(data):
     >>> median_low([1, 3, 5, 7])
     3
 
+    >>> median_low([])
+    Traceback (most recent call last):
+        ...
+    StatisticsError: no median for empty data
+
+
     """
     data = sorted(data)
     n = len(data)
@@ -312,61 +367,17 @@ def median_high(data):
     >>> median_high([1, 3, 5, 7])
     5
 
+    >>> median_high([])
+    Traceback (most recent call last):
+        ...
+    StatisticsError: no median for empty data
+
     """
     data = sorted(data)
     n = len(data)
     if n == 0:
         raise StatisticsError("no median for empty data")
     return data[n // 2]
-
-
-def median_grouped(data, interval=1):
-    """"Return the 50th percentile (median) of grouped continuous data.
-
-    >>> median_grouped([1, 2, 2, 3, 4, 4, 4, 4, 4, 5])
-    3.7
-    >>> median_grouped([52, 52, 53, 54])
-    52.5
-
-    This calculates the median as the 50th percentile, and should be
-    used when your data is continuous and grouped. In the above example,
-    the values 1, 2, 3, etc. actually represent the midpoint of classes
-    0.5-1.5, 1.5-2.5, 2.5-3.5, etc. The middle value falls somewhere in
-    class 3.5-4.5, and interpolation is used to estimate it.
-
-    Optional argument ``interval`` represents the class interval, and
-    defaults to 1. Changing the class interval naturally will change the
-    interpolated 50th percentile value:
-
-    >>> median_grouped([1, 3, 3, 5, 7], interval=1)
-    3.25
-    >>> median_grouped([1, 3, 3, 5, 7], interval=2)
-    3.5
-
-    This function does not check whether the data points are at least
-    ``interval`` apart.
-    """
-    data = sorted(data)
-    n = len(data)
-    if n == 0:
-        raise StatisticsError("no median for empty data")
-    elif n == 1:
-        return data[0]
-        # Find the value at the midpoint. Remember this corresponds to the
-    # centre of the class interval.
-    x = data[n // 2]
-    for obj in (x, interval):
-        if isinstance(obj, (str, bytes)):
-            raise TypeError('expected number but got %r' % obj)
-    try:
-        L = x - interval / 2  # The lower limit of the median interval.
-    except TypeError:
-        # Mixed type. For now we just coerce to float.
-        L = float(x) - float(interval) / 2
-    cf = data.index(x)  # Number of values below the median interval.
-    # FIXME The following line could be more efficient for big lists.
-    f = data.count(x)  # Number of data points in the median interval.
-    return L + interval * (n / 2 - cf) / f
 
 
 def mode(data):
@@ -382,6 +393,16 @@ def mode(data):
 
     >>> mode(["red", "blue", "blue", "red", "green", "red", "red"])
     'red'
+
+    >>> mode(["red", "blue", "blue", "red"])
+    Traceback (most recent call last):
+        ...
+    StatisticsError: no unique mode; found 2 equally common values
+
+    >>> mode([])
+    Traceback (most recent call last):
+        ...
+    StatisticsError: no mode for empty data
 
     If there is not exactly one most common value, ``mode`` will raise
     StatisticsError.
@@ -466,6 +487,9 @@ def variance(data, xbar=None):
     >>> variance([F(1, 6), F(1, 2), F(5, 3)])
     Fraction(67, 108)
 
+    >>> variance(iter([1, 2, 5]))
+    4.333333333333334
+
     """
     if iter(data) is data:
         data = list(data)
@@ -513,6 +537,15 @@ def pvariance(data, mu=None):
     >>> from fractions import Fraction as F
     >>> pvariance([F(1, 4), F(5, 4), F(1, 2)])
     Fraction(13, 72)
+
+    >>> pvariance(iter([1, 2, 3]))
+    0.6666666666666666
+
+    >>> pvariance([])
+    Traceback (most recent call last):
+        ...
+    StatisticsError: pvariance requires at least one data point
+
 
     """
     if iter(data) is data:
@@ -716,7 +749,6 @@ def get_histogram(data):
         ...
     StatisticsError: Too few data points (1) for get_histogram
 
-
     """
 
     count = len(data)
@@ -742,7 +774,16 @@ def get_histogram(data):
 
 
 def _get_histogram_bins(min_, max_, std, count):
-    """Return optimal bins given the input parameters"""
+    """
+    Return optimal bins given the input parameters
+
+    >>> _get_histogram_bins(1, 3, 0.5, 5)
+    [2, 3, 4]
+
+    >>> _get_histogram_bins(1, 2, -1/3.5, 1.0)
+    [1]
+
+    """
 
     width = _get_bin_width(std, count)
     count = int(round((max_ - min_) / width) + 1)
