@@ -2,7 +2,7 @@ AppMetrics
 ++++++++++
 
 .. image:: https://travis-ci.org/avalente/appmetrics.png?branch=master
-:target: https://travis-ci.org/avalente/appmetrics
+    :target: https://travis-ci.org/avalente/appmetrics
     :alt: Build status
 
 
