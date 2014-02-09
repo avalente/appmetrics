@@ -31,7 +31,7 @@ class UniformReservoir(object):
 
     def __init__(self, size=DEFAULT_UNIFORM_RESERVOIR_SIZE):
         self.size = size
-        self.values = [0] * size
+        self._values = [0] * size
         self.count = 0
         self.lock = threading.Lock()
 
@@ -48,17 +48,27 @@ class UniformReservoir(object):
 
         with self.lock:
             if self.count < self.size:
-                self.values[self.count] = value
+                self._values[self.count] = value
                 changed = True
             else:
                 k = random.randint(0, self.count - 1)
                 if k < self.size:
-                    self.values[k] = value
+                    self._values[k] = value
                     changed = True
 
         self.count += 1
 
         return changed
+
+    @property
+    def values(self):
+        """
+        Return the stored values
+        """
+
+        if self.count < self.size:
+            return self._values[:self.count]
+        return self._values
 
     @property
     def sorted_values(self):

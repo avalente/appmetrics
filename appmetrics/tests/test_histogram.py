@@ -9,7 +9,9 @@ from .. import histogram as mm
 def test_uniform_reservoir_defaults():
     ur = mm.UniformReservoir()
     assert_equal(ur.size, mm.DEFAULT_UNIFORM_RESERVOIR_SIZE)
-    assert_equal(ur.values, [0] * mm.DEFAULT_UNIFORM_RESERVOIR_SIZE)
+    assert_equal(ur._values, [0] * mm.DEFAULT_UNIFORM_RESERVOIR_SIZE)
+    assert_equal(ur.values, [])
+    assert_equal(ur.sorted_values, [])
     assert_equal(ur.count, 0)
 
 
@@ -26,16 +28,16 @@ class TestUniformReservoir(object):
 
     def test_add_first(self):
         self.ur.add(1.5)
-        assert_equal(self.ur.values, [1.5, 0, 0, 0, 0])
+        assert_equal(self.ur.values, [1.5])
 
         self.ur.add(2.5)
-        assert_equal(self.ur.values, [1.5, 2.5, 0, 0, 0])
+        assert_equal(self.ur.values, [1.5, 2.5])
 
         self.ur.add(3.5)
-        assert_equal(self.ur.values, [1.5, 2.5, 3.5, 0, 0])
+        assert_equal(self.ur.values, [1.5, 2.5, 3.5])
 
         self.ur.add(4.5)
-        assert_equal(self.ur.values, [1.5, 2.5, 3.5, 4.5, 0])
+        assert_equal(self.ur.values, [1.5, 2.5, 3.5, 4.5])
 
         self.ur.add(5.5)
         assert_equal(self.ur.values, [1.5, 2.5, 3.5, 4.5, 5.5])
@@ -63,6 +65,16 @@ class TestUniformReservoir(object):
 
         self.ur.add(15)
         assert_equal(self.ur.values, [11, 13, 3.5, 10.0, 5.5])
+
+    def test_values_smaller_count(self):
+        for i in range(3):
+            self.ur.add(i)
+        assert_equal(len(self.ur.values), self.ur.count)
+
+    def test_values_greater_count(self):
+        for i in range(6):
+            self.ur.add(i)
+        assert_equal(len(self.ur.values), self.ur.size)
 
     def test_sorted_values(self):
         for i in range(5):
