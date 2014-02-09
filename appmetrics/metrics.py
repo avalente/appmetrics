@@ -21,7 +21,7 @@ Main interface module
 import threading
 
 from .exceptions import DuplicateMetricError, InvalidMetricError
-from . import histogram
+from . import histogram, simple_metrics
 
 REGISTRY = {}
 LOCK = threading.Lock()
@@ -62,5 +62,22 @@ def new_histogram(name, size=histogram.DEFAULT_UNIFORM_RESERVOIR_SIZE):
     """
     Build a new histogram metric with a uniform reservoir of configurable size
     """
+
     reservoir = histogram.UniformReservoir(size)
     return new_metric(name, histogram.Histogram, reservoir)
+
+
+def new_counter(name):
+    """
+    Build a new "counter" metric
+    """
+
+    return new_metric(name, simple_metrics.Counter)
+
+
+def new_gauge(name):
+    """
+    Build a new "gauge" metric
+    """
+
+    return new_metric(name, simple_metrics.Gauge)
