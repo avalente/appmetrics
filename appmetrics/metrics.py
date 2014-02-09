@@ -54,7 +54,7 @@ def metric(name):
 
     try:
         return REGISTRY[name]
-    except KeyError, e:
+    except KeyError as e:
         raise InvalidMetricError("Metric {} not found!".format(e))
 
 

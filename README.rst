@@ -26,14 +26,14 @@ Once that you installed `AppMetrics` package in your python environment
     >>> histogram.get()
     {'arithmetic_mean': 2.0, 'skewness': 0.0, 'harmonic_mean': 1.6363636363636365, 'min': 1.0, 'standard_deviation': 1.0, 'median': 2.0, 'histogram': [(3.0, 3), (5.0, 0)], 'percentile': [(50, 2.0), (75, 2.0), (90, 3.0), (95, 3.0), (99, 3.0), (99.9, 3.0)], 'n': 3, 'max': 3.0, 'variance': 1.0, 'geometric_mean': 1.8171205928321397, 'kurtosis': -2.3333333333333335}
 
-Basically you create a new metric by using one of the _metrics.new_*_ functions. The metric will be stored into
+Basically you create a new metric by using one of the `metrics.new_*` functions. The metric will be stored into
 an internal registry, so you can access it in different places in your application::
 
     >>> test_histogram = metrics.metric("test")
     >>> test_histogram.notify(4.0)
     True
 
-The _metrics_ registry is thread-safe, you can safely use it in multi-threaded web servers.
+The `metrics` registry is thread-safe, you can safely use it in multi-threaded web servers.
 
 Testing
 -------
