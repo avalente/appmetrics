@@ -120,6 +120,70 @@ the only *reservoir* type available is the *uniform* one, in which a fixed numbe
 is kept, and when the reservoir is full new values replace older ones randomly, ensuring that the
 sample is always statistically representative.
 
+External access
+---------------
+
+You can access the metrics provided by *AppMetrics* externally by the WSGI
+middleware found in *appmetrics.wsgi.AppMetricsMiddleware*. It is a standard WSGI
+middleware without external dependencies and it can be plugged in any framework supporting
+the WSGI standard, for example in a *Flask* application::
+
+    from flask import Flask
+    from appmetrics import metrics
+
+    metrics.new_histogram("test-histogram")
+    metrics.new_gauge("test-counter")
+    metrics.metric("test-counter").notify(10)
+
+    app = Flask(__name__)
+
+    @app.route('/hello')
+    def hello_world():
+        return 'Hello World!'
+
+    if __name__ == '__main__':
+        from appmetrics.wsgi import AppMetricsMiddleware
+        app.wsgi_app = AppMetricsMiddleware(app.wsgi_app)
+        app.run()
+
+If you launch the above application you can ask metrics::
+
+    $ curl http://localhost:5000/hello
+    Hello World!
+
+    $ curl http://localhost:5000/_app-metrics
+    ["test-counter", "test-histogram"]
+
+    $ curl http://localhost:5000/_app-metrics/test-counter
+    10
+
+In this way you can easily expose your application's metrics to an external monitoring service.
+Moreover, since the *AppMetricsMiddleware* exposes a full RESTful API, you can create metrics
+from anywhere and also populate them with foreign application's data.
+
+Usage
+*****
+
+As usual, instantiate the middleware with the wrapped WSGI application; it looks for
+request paths starting with *"/_app-metrics"*: if not found, the wrapped application
+is called. The following resources are defined:
+
+ - /_app-metrics:
+     - GET: return the list of the registered metrics
+ - /_app-metrics/<name>:
+     - GET: return the value of the given metric or 404
+     - PUT: create a new metric with the given name. The body must be a JSON object with a
+            mandatory attribute named *"type"* which must be one of the metrics types allowed,
+            by the *"metrics.METRIC_TYPES"* dictionary, while the other attributes are
+            passed to the *new_<type>* function as keyword arguments.
+            Request's content-type must be *"application/json"*.
+     - POST: add a new value to the metric. The body must be a JSON object with a mandatory
+             attribute named *"value"*: the notify method will be called with the given value.
+             Other attributes are ignored.
+             Request's content-type must be *"application/json"*
+
+The root can be different from *"/_app-metrics"*, you can pass it to the middleware constructor.
+
 
 Testing
 -------

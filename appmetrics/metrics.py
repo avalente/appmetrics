@@ -45,6 +45,15 @@ def new_metric(name, class_, *args, **kwargs):
     raise DuplicateMetricError("Metric {} already exists of type {}".format(name, type(item).__name__))
 
 
+def delete_metric(name):
+    """Remove the named metric"""
+
+    with LOCK:
+        old_metric = REGISTRY.pop(name, None)
+
+    return old_metric
+
+
 def metric(name):
     """
     Return the metric with the given name, if any
@@ -57,6 +66,13 @@ def metric(name):
     except KeyError as e:
         raise InvalidMetricError("Metric {} not found!".format(e))
 
+
+def metrics():
+    """
+    Return the list of the returned metrics' names
+    """
+
+    return sorted(REGISTRY.keys())
 
 def new_histogram(name, size=histogram.DEFAULT_UNIFORM_RESERVOIR_SIZE):
     """
@@ -81,3 +97,10 @@ def new_gauge(name):
     """
 
     return new_metric(name, simple_metrics.Gauge)
+
+
+METRIC_TYPES = {
+    'histogram': new_histogram,
+    'gauge': new_gauge,
+    'counter': new_counter,
+}

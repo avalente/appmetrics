@@ -45,6 +45,27 @@ class TestMetricsModule(object):
         expected = mm.REGISTRY["test"] = mock.Mock()
         assert_equal(mm.metric("test"), expected)
 
+    def test_metrics(self):
+        mm.REGISTRY = dict(test1=mock.Mock(), test2=mock.Mock())
+        expected = ["test1", "test2"]
+        assert_equal(mm.metrics(), expected)
+
+    def test_delete_metric(self):
+        m1 = mock.Mock()
+        m2 = mock.Mock()
+        mm.REGISTRY = dict(test1=m1, test2=m2)
+
+        assert_equal(mm.delete_metric("test1"), m1)
+        assert_equal(mm.REGISTRY, dict(test2=m2))
+
+    def test_delete_metric_not_found(self):
+        m1 = mock.Mock()
+        m2 = mock.Mock()
+        mm.REGISTRY = dict(test1=m1, test2=m2)
+
+        assert_equal(mm.delete_metric("test3"), None)
+        assert_equal(mm.REGISTRY, dict(test1=m1, test2=m2))
+
     def test_new_histogram_default(self):
         metric = mm.new_histogram("test")
 
