@@ -21,7 +21,7 @@ Main interface module
 import threading
 
 from .exceptions import DuplicateMetricError, InvalidMetricError
-from . import histogram, simple_metrics
+from . import histogram, simple_metrics, meter
 
 REGISTRY = {}
 LOCK = threading.Lock()
@@ -99,8 +99,17 @@ def new_gauge(name):
     return new_metric(name, simple_metrics.Gauge)
 
 
+def new_meter(name, tick_interval=5):
+    """
+    Build a new "meter" metric
+    """
+
+    return new_metric(name, meter.Meter, tick_interval)
+
+
 METRIC_TYPES = {
     'histogram': new_histogram,
     'gauge': new_gauge,
     'counter': new_counter,
+    'meter': new_meter,
 }

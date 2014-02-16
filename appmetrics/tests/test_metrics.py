@@ -1,7 +1,7 @@
 import mock
 from nose.tools import assert_equal, assert_in, raises, assert_is, assert_is_instance
 
-from .. import metrics as mm, exceptions, histogram, simple_metrics as simple
+from .. import metrics as mm, exceptions, histogram, simple_metrics as simple, meter
 
 
 class TestMetricsModule(object):
@@ -97,4 +97,11 @@ class TestMetricsModule(object):
         assert_is(metric, mm.metric("test"))
 
         assert_is_instance(metric, simple.Gauge)
+
+    def test_new_meter(self):
+        metric = mm.new_meter("test")
+
+        assert_is(metric, mm.metric("test"))
+
+        assert_is_instance(metric, meter.Meter)
 

@@ -95,7 +95,7 @@ class Histogram(object):
         return self.reservoir.values
 
     def get(self):
-        """Get the computed statistics over the gathered data"""
+        """Return the computed statistics over the gathered data"""
 
         values = self.reservoir.sorted_values
 

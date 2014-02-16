@@ -120,6 +120,32 @@ the only *reservoir* type available is the *uniform* one, in which a fixed numbe
 is kept, and when the reservoir is full new values replace older ones randomly, ensuring that the
 sample is always statistically representative.
 
+Meters
+******
+
+Meters are increment-only counters that measure the rate of events (such as "http requests") over time. This kind of
+metric is useful to collect throughput values (such as "requests per second"), both on average and on different time
+intervals::
+
+    >>> meter = metrics.new_meter("meter_test")
+    >>> meter.notify(1)
+    >>> meter.notify(1)
+    >>> meter.notify(3)
+    >>> meter.get()
+    {'count': 5, 'five': 0.01652854617838251, 'mean': 0.34341050858242983, 'fifteen': 0.005540151995103271, 'day': 5.7868695912732804e-05, 'one': 0.07995558537067671}
+
+The return values of the *get* method are the following:
+
+ - count: number of operations collected so far
+ - mean: the average throughput since the metric creation
+ - one: one-minute
+   `exponentially-weighted moving average <http://en.wikipedia.org/wiki/Moving_average#Exponential_moving_average>`_
+   (*EWMA*)
+ - five: five-minutes *EWMA*
+ - fifteen: fifteen-minutes *EWMA*
+ - day: last day *EWMA*
+
+
 External access
 ---------------
 
@@ -146,7 +172,7 @@ the WSGI standard, for example in a *Flask* application::
         app.wsgi_app = AppMetricsMiddleware(app.wsgi_app)
         app.run()
 
-If you launch the above application you can ask metrics::
+If you launch the above application you can ask for metrics::
 
     $ curl http://localhost:5000/hello
     Hello World!
