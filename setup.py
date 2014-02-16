@@ -17,7 +17,7 @@ setup(
     author = "Antonio Valente",
     author_email = "y3sman@gmail.com",
     description = "Application metrics collector",
-    license = "BSD",
-    keywords = "application metrics",
-    url = "",
+    license = "Apache 2.0",
+    keywords = "metrics",
+    url = "https://github.com/avalente/appmetrics",
 )
