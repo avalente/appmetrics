@@ -6,6 +6,11 @@ AppMetrics
     :alt: Build status
 
 
+.. image:: https://coveralls.io/repos/avalente/appmetrics/badge.png
+:target: https://coveralls.io/r/avalente/appmetrics
+    :alt: Code coverage
+
+
 *AppMetrics* is a python library used to collect useful run-time application's metrics, based on
 `Folsom from Boundary <https://github.com/boundary/folsom>`_, which is in turn inspired by
 `Metrics from Coda Hale <https://github.com/codahale/metrics>`_.

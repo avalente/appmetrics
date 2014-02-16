@@ -3,10 +3,16 @@ python:
   - "2.7"
 #  - "3.2"
 #  - "3.3"
+
 # command to install dependencies
 install:
   - "pip install ."
   - "pip install -r requirements.txt"
-# command to run tests
-script: nosetests --with-doctest
 
+# command to run tests
+script:
+  - nosetests --with-doctest --with-coverage --cover-package=appmetrics --cover-erase
+
+after_success:
+  # code coverage
+  - coveralls
