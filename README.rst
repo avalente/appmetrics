@@ -7,7 +7,7 @@ AppMetrics
 
 
 .. image:: https://coveralls.io/repos/avalente/appmetrics/badge.png
-:target: https://coveralls.io/r/avalente/appmetrics
+    :target: https://coveralls.io/r/avalente/appmetrics
     :alt: Code coverage
 
 
@@ -199,9 +199,9 @@ As usual, instantiate the middleware with the wrapped WSGI application; it looks
 request paths starting with *"/_app-metrics"*: if not found, the wrapped application
 is called. The following resources are defined:
 
- * */_app-metrics*:
+ * */\_app-metrics*:
      * GET: return the list of the registered metrics
- * */_app-metrics/<name>*:
+ * */\_app-metrics/<name>*:
      * GET: return the value of the given metric or 404.
      * PUT: create a new metric with the given name. The body must be a JSON object with a
             mandatory attribute named *"type"* which must be one of the metrics types allowed,
@@ -213,7 +213,7 @@ is called. The following resources are defined:
              Other attributes are ignored.
              Request's content-type must be *"application/json"*.
 
-The root can be different from *"/_app-metrics"*, you can pass it to the middleware constructor.
+The root can be different from *"/\_app-metrics"*, you can pass it to the middleware constructor.
 
 
 Testing
