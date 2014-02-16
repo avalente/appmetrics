@@ -46,13 +46,13 @@ an internal registry, so you can access it in different places in your applicati
 The *metrics* registry is thread-safe, you can safely use it in multi-threaded web servers.
 
 
-API
----
+APIs
+----
 
 *AppMetrics* exposes a simple and consistent API: all the metric objects have three methods:
- * notify(value)   - add a new value to the metric
- * get()           - get the computed metric's value (if any)
- * raw_data()      - get the raw data stored in the metrics
+ * *notify(value)*   - add a new value to the metric
+ * *get()*           - get the computed metric's value (if any)
+ * *raw_data()*      - get the raw data stored in the metrics
 
 However, the *notify* input type depends on the kind of metric chosen.
 
@@ -141,14 +141,14 @@ intervals::
 
 The return values of the *get* method are the following:
 
- - count: number of operations collected so far
- - mean: the average throughput since the metric creation
- - one: one-minute
+ * count: number of operations collected so far
+ * mean: the average throughput since the metric creation
+ * one: one-minute
    `exponentially-weighted moving average <http://en.wikipedia.org/wiki/Moving_average#Exponential_moving_average>`_
    (*EWMA*)
- - five: five-minutes *EWMA*
- - fifteen: fifteen-minutes *EWMA*
- - day: last day *EWMA*
+ * five: five-minutes *EWMA*
+ * fifteen: fifteen-minutes *EWMA*
+ * day: last day *EWMA*
 
 
 External access
@@ -199,19 +199,19 @@ As usual, instantiate the middleware with the wrapped WSGI application; it looks
 request paths starting with *"/_app-metrics"*: if not found, the wrapped application
 is called. The following resources are defined:
 
- - /_app-metrics:
-     - GET: return the list of the registered metrics
- - /_app-metrics/<name>:
-     - GET: return the value of the given metric or 404
-     - PUT: create a new metric with the given name. The body must be a JSON object with a
+ * */_app-metrics*:
+     * GET: return the list of the registered metrics
+ * */_app-metrics/<name>*:
+     * GET: return the value of the given metric or 404.
+     * PUT: create a new metric with the given name. The body must be a JSON object with a
             mandatory attribute named *"type"* which must be one of the metrics types allowed,
             by the *"metrics.METRIC_TYPES"* dictionary, while the other attributes are
             passed to the *new_<type>* function as keyword arguments.
             Request's content-type must be *"application/json"*.
-     - POST: add a new value to the metric. The body must be a JSON object with a mandatory
+     * POST: add a new value to the metric. The body must be a JSON object with a mandatory
              attribute named *"value"*: the notify method will be called with the given value.
              Other attributes are ignored.
-             Request's content-type must be *"application/json"*
+             Request's content-type must be *"application/json"*.
 
 The root can be different from *"/_app-metrics"*, you can pass it to the middleware constructor.
 
