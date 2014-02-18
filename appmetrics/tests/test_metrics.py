@@ -50,6 +50,28 @@ class TestMetricsModule(object):
         expected = ["test1", "test2"]
         assert_equal(mm.metrics(), expected)
 
+    def test_get(self):
+        mm.REGISTRY = dict(test1=mock.Mock(), test2=mock.Mock())
+        assert_equal(mm.get("test1"), mm.REGISTRY["test1"].get.return_value)
+
+    @raises(exceptions.InvalidMetricError)
+    def test_get_not_existing(self):
+        mm.REGISTRY = dict(test1=mock.Mock(), test2=mock.Mock())
+        mm.get("test3")
+
+    def test_notify(self):
+        mm.REGISTRY = dict(test1=mock.Mock(), test2=mock.Mock())
+        mm.notify("test1", 123)
+        assert_equal(
+            mm.REGISTRY["test1"].notify.call_args_list,
+            [mock.call(123)]
+        )
+
+    @raises(exceptions.InvalidMetricError)
+    def test_notify_not_existing(self):
+        mm.REGISTRY = dict(test1=mock.Mock(), test2=mock.Mock())
+        mm.notify("test3", 123)
+
     def test_delete_metric(self):
         m1 = mock.Mock()
         m2 = mock.Mock()

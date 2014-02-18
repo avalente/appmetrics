@@ -30,7 +30,7 @@ LOCK = threading.Lock()
 def new_metric(name, class_, *args, **kwargs):
     """Create a new metric of the given class.
 
-    Raises DuplicateMetricError if the given name has been already registered before
+    Raise DuplicateMetricError if the given name has been already registered before
 
     Internal function - use "new_<type> instead"
     """
@@ -58,7 +58,7 @@ def metric(name):
     """
     Return the metric with the given name, if any
 
-    Raises InvalidMetricError if the given name has not been registered
+    Raise InvalidMetricError if the given name has not been registered
     """
 
     try:
@@ -73,6 +73,25 @@ def metrics():
     """
 
     return sorted(REGISTRY.keys())
+
+
+def get(name):
+    """
+    Call "get" on the metric with the given name
+    Raise InvalidMetricError if the given name has not been registered
+    """
+
+    return metric(name).get()
+
+
+def notify(name, value):
+    """
+    Call "notify" on the metric with the given name
+    Raise InvalidMetricError if the given name has not been registered
+    """
+
+    return metric(name).notify(value)
+
 
 def new_histogram(name, size=histogram.DEFAULT_UNIFORM_RESERVOIR_SIZE):
     """
