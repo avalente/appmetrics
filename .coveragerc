@@ -2,6 +2,7 @@
 omit =
     */python?.?/*
     */site-packages/nose/*
+    benchmark.py
 
 exclude_lines =
     # Have to re-enable the standard pragma
