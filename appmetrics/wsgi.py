@@ -19,9 +19,10 @@
 WSGI middleware
 """
 
-import logging
-from cgi import escape
+import logging, logging.config
 import json
+
+import werkzeug
 
 from . import metrics, exceptions
 
@@ -54,17 +55,7 @@ class AppMetricsMiddleware(object):
     The root can be different from "/_app-metrics", you can set it on middleware constructor.
     """
 
-    statuses = {
-        200: "OK",
-        400: "Bad Request",
-        404: "Not Found",
-        405: "Method Not Allowed",
-        411: "Length Required",
-        415: "Unsupported Media Type",
-        500: "Internal Server Error",
-    }
-
-    def __init__(self, app, root="_app-metrics", extra_headers=None):
+    def __init__(self, app, root="_app-metrics", extra_headers=None, mimetype="application/json"):
         """
         parameters:
         - app: wrapped WSGI application
@@ -72,181 +63,134 @@ class AppMetricsMiddleware(object):
         - extra_headers: extra headers that will be appended to the return headers
         """
         self.app = app
-        self.root = (root if root.startswith("/") else "/"+root).strip()
+        self.root = "/" + root.strip("/").strip()
         self.extra_headers = extra_headers or {}
+        self.mimetype = mimetype
 
-    def match(self, path):
-        """Return the actual request path (starting from the root) or None if not matched"""
+        self.url_map = werkzeug.routing.Map([
+            werkzeug.routing.Submount(self.root, [
+                werkzeug.routing.Rule("/", endpoint=handle_metrics_list, methods=['GET']),
+                werkzeug.routing.Rule("/<name>", endpoint=handle_metric_show, methods=['GET']),
+                werkzeug.routing.Rule("/<name>", endpoint=handle_metric_new, methods=['PUT']),
+                werkzeug.routing.Rule("/<name>", endpoint=handle_metric_update, methods=['POST']),
+                werkzeug.routing.Rule("/<name>", endpoint=handle_metric_delete, methods=['DELETE']),
+          ])
+        ])
 
-        if path.strip() == self.root:
-            return ""
+    def get_response(self, body, code, headers=None):
+        if headers is None:
+            headers = []
+        headers = dict(headers).copy()
+        headers.update(self.extra_headers)
+        return werkzeug.wrappers.Response(body, code, headers.items(), self.mimetype)
 
-        if path.startswith(self.root):
-            path = path[len(self.root):]
-            if path.startswith('/'):
-                return path
-
-        return None
+    def jsonize_error(self, exception, environ):
+        return self.get_response(json.dumps(exception.description), exception.code, exception.get_headers(environ))
 
     def __call__(self, environ, start_response):
         """WSGI application interface"""
 
-        path = self.match(environ['PATH_INFO'])
-        if path is None:
+        urls = self.url_map.bind_to_environ(environ)
+
+        try:
+            endpoint, args = urls.match()
+        except werkzeug.exceptions.NotFound:
             # the request did not match, go on with wsgi stack
             return self.app(environ, start_response)
+
+        except werkzeug.exceptions.HTTPException as e:
+            response = e
+
         else:
-            # extract the method
-            method = environ['REQUEST_METHOD'].upper()
-
-            # dispatch the call
-            handler = AppMetricsHandler(environ)
-            status, body = handler.handle(method, path)
-
-            # handle the response status
-            if status not in self.statuses:
-                status = 500
-
-            headers = {'Content-Type': 'application/json'}
-            headers.update(self.extra_headers)
-
-            # if not 200, build a status page
-            if status != 200 and not body:
-                body = self.error_body(status)
-                headers['Content-Type'] = 'text/html'
-            elif status != 200:
-                body = json.dumps(body)
-
-            headers = headers.items()
-
-            # build status line
-            status_text = self.statuses[status]
-            status_string = "{} {}".format(status, status_text)
-
-            # encode the body if needed and add the content-length
-            if isinstance(body, unicode):
-                body = body.encode('utf8')
-            size = len(body)
-            headers = headers + [('Content-Length', str(size))]
-
-            # start response
-            start_response(status_string, headers)
-
-            return [body]
-
-    def error_body(self, code):
-        """build an html page for the given error code"""
-
-        name = self.statuses[code]
-        html = (
-            u'<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 3.2 Final//EN">\n'
-            u'<html><head><title>{code} {name}</title></head>\n'
-            u'<body><h1>{name}</h1></body></html>\n'
-        )
-        return html.format(code=code, name=escape(name))
-
-
-class AppMetricsHandler(object):
-    """Request handler for the WSGI middleware"""
-
-    def __init__(self, environ):
-        self.environ = environ
-
-    def handle(self, method, path):
-        if not path:
-            status, data = self.handle_list(method)
-        else:
-            status, data = self.handle_metric(method, path[1:])
-
-        return status, data
-
-    def handle_list(self, method):
-        if method != "GET":
-            return 405, ""
-        return 200, json.dumps(metrics.metrics())
-
-    def handle_metric(self, method, name):
-        if method == "GET":
-            return self.return_metric(name)
-
-        if method == "DELETE":
-            res = metrics.delete_metric(name)
-
-            return 200, "deleted" if res else "not deleted"
-
-        elif method in ("PUT", "POST"):
-            # get content length
-            length = self.environ.get('CONTENT_LENGTH')
-            if not length:
-                return 411, None
+            request = werkzeug.wrappers.Request(environ, populate_request=False)
             try:
-                length = int(length)
-            except Exception:
-                log.debug("Invalid content-length: %s" % length)
-                return 400, None
+                body = endpoint(request, **args)
+                response = self.get_response(body, 200)
+            except werkzeug.exceptions.HTTPException as e:
+                response = self.jsonize_error(e, environ)
 
-            # get content type
-            ctype = self.environ.get('CONTENT_TYPE')
-            if not ctype:
-                return 415, None
-            ctype = ctype.split(";")
-            if ctype[0].strip().lower() != "application/json":
-                return 415, None
-
-            # get content data
-            body = self.environ['wsgi.input'].read(length)
-            try:
-                body = json.loads(body)
             except Exception as e:
-                log.debug("Invalid body: %s", e)
-                return 400, "invalid json"
+                log.debug("Unhandled exception: %s", e, exc_info=True)
+                response = self.get_response("Internal Server Error", 500)
 
-            # dispatch on method
-            if method == "PUT":
-                return self.add_metric(name, body)
-            else:
-                return self.add_value(name, body)
-        else:
-            return 405, None
+        return response(environ, start_response)
 
-    def add_metric(self, name, data):
-        type_ = data.pop('type', None)
-        if not type_:
-            return 400, "metric type not provided"
 
-        metric_type = metrics.METRIC_TYPES.get(type_)
+def get_body(request):
+    # get content type
+    ctype = request.mimetype
+    if not ctype or ctype != "application/json":
+        raise werkzeug.exceptions.UnsupportedMediaType()
 
-        if not metric_type:
-            return 400, "invalid metric type: {!r}".format(type_)
+    # get content data
+    try:
+        return json.load(request.stream)
+    except ValueError as e:
+        log.debug("Invalid body: %s", e)
+        raise werkzeug.exceptions.BadRequest(description="invalid json")
 
-        try:
-            metric_type(name, **data)
-        except exceptions.AppMetricsError as e:
-            return 400, "can't create metric {}({!r}): {}".format(type_, name, e)
-        except Exception as e:
-            log.debug(str(e), exc_info=True)
-            return 400, "can't create metric {}({!r})".format(type_, name)
 
-        return 200, ""
+def handle_metrics_list(request):
+    return json.dumps(metrics.metrics())
 
-    def add_value(self, name, data):
-        value = data.pop('value', None)
-        if value is None:
-            return 400, "metric value not provided"
 
-        try:
-            metric = metrics.metric(name)
-        except KeyError:
-            return 404, None
+def handle_metric_show(request, name):
+    try:
+        metric = metrics.metric(name)
+    except KeyError:
+        raise werkzeug.exceptions.NotFound(("No such metric: {!r}".format(name)))
 
-        metric.notify(value)
+    return json.dumps(metric.get())
 
-        return 200, ""
 
-    def return_metric(self, name):
-        try:
-            metric = metrics.metric(name)
-        except KeyError:
-            return 404, "No such metric: %r" % name
+def handle_metric_delete(request, name):
+    res = metrics.delete_metric(name)
 
-        return 200, json.dumps(metric.get())
+    return "deleted" if res else "not deleted"
+
+
+def handle_metric_new(request, name):
+    data = get_body(request)
+
+    type_ = data.pop('type', None)
+    if not type_:
+        raise werkzeug.exceptions.BadRequest(description="metric type not provided")
+
+    metric_type = metrics.METRIC_TYPES.get(type_)
+
+    if not metric_type:
+        raise werkzeug.exceptions.BadRequest("invalid metric type: {!r}".format(type_))
+
+    try:
+        metric_type(name, **data)
+    except exceptions.AppMetricsError as e:
+        raise werkzeug.exceptions.BadRequest("can't create metric {}({!r}): {}".format(type_, name, e))
+    except Exception as e:
+        log.debug(str(e), exc_info=True)
+        raise werkzeug.exceptions.BadRequest("can't create metric {}({!r})".format(type_, name))
+
+    return ""
+
+
+def handle_metric_update(request, name):
+    data = get_body(request)
+
+    value = data.pop('value', None)
+    if value is None:
+        raise werkzeug.exceptions.BadRequest("metric value not provided")
+
+    try:
+        metric = metrics.metric(name)
+    except KeyError:
+        raise werkzeug.exceptions.NotFound()
+
+    metric.notify(value)
+
+    return ""
+
+
+# useful to run standalone with werkzeug's server:
+# $ python -m werkzeug.serving appmetrics.wsgi.standalone_app
+# * Running on http://127.0.0.1:5000/
+
+standalone_app = AppMetricsMiddleware(werkzeug.exceptions.NotFound(), "")

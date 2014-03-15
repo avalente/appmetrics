@@ -2,15 +2,69 @@ import json
 from cStringIO import StringIO
 
 import mock
-from nose.tools import assert_equal, assert_false, assert_is_instance
+from nose.tools import assert_equal, assert_false, assert_is_instance, raises, assert_raises
+import werkzeug, werkzeug.test
 
 from .. import wsgi, metrics
 
 
 def env(path, **kwargs):
-    data = dict(PATH_INFO=path)
-    data.update(kwargs)
-    return data
+    data = werkzeug.test.EnvironBuilder(path, environ_overrides=kwargs)
+    return data.get_environ()
+
+
+def req(body):
+    data = werkzeug.test.EnvironBuilder(data=json.dumps(body), content_type="application/json")
+    return data.get_request(cls=werkzeug.wrappers.Request)
+
+
+def check_dispatching(mw, url, method, expected):
+    urls = mw.url_map.bind_to_environ(env(url, REQUEST_METHOD=method))
+    try:
+        endpoint, _ = urls.match()
+    except expected:
+        pass
+    except Exception:
+        raise
+    else:
+        assert_equal(endpoint, expected)
+
+
+def test_dispatching():
+    tests = [
+        ("/_app-metrics", 'GET', werkzeug.routing.RequestRedirect),
+        ("/_app-metrics/", 'GET', wsgi.handle_metrics_list),
+        ("/_app-metrics/", 'POST', werkzeug.exceptions.MethodNotAllowed),
+        ("/_app-metrics/test", 'GET', wsgi.handle_metric_show),
+        ("/_app-metrics/test", 'PUT', wsgi.handle_metric_new),
+        ("/_app-metrics/test", 'POST', wsgi.handle_metric_update),
+        ("/_app-metrics/test", 'DELETE', wsgi.handle_metric_delete),
+        ("/_app-metrics/test", 'OPTIONS', werkzeug.exceptions.MethodNotAllowed),
+        ("/_app-metrics/test/sub", 'GET', werkzeug.routing.NotFound),
+    ]
+
+    mw = wsgi.AppMetricsMiddleware(None)
+
+    for url, method, expected in tests:
+        yield lambda url, method: check_dispatching(mw, url, method, expected), url, method
+
+
+def test_dispatching_root():
+    tests = [
+        ("/", 'GET', wsgi.handle_metrics_list),
+        ("/", 'POST', werkzeug.exceptions.MethodNotAllowed),
+        ("/test", 'GET', wsgi.handle_metric_show),
+        ("/test", 'PUT', wsgi.handle_metric_new),
+        ("/test", 'POST', wsgi.handle_metric_update),
+        ("/test", 'DELETE', wsgi.handle_metric_delete),
+        ("/test", 'OPTIONS', werkzeug.exceptions.MethodNotAllowed),
+        ("/test/sub", 'GET', werkzeug.routing.NotFound),
+        ]
+
+    mw = wsgi.AppMetricsMiddleware(None, "")
+
+    for url, method, expected in tests:
+        yield lambda url, method: check_dispatching(mw, url, method, expected), url, method
 
 
 class TestAppMetricsMiddleware(object):
@@ -18,15 +72,12 @@ class TestAppMetricsMiddleware(object):
         self.app = mock.Mock()
         self.start_response = mock.Mock()
 
+        self.patch = mock.patch('appmetrics.wsgi.handle_metrics_list')
+        self.handler = self.patch.start()
         self.mw = wsgi.AppMetricsMiddleware(self.app)
 
-
-    def test_match(self):
-        assert_equal(self.mw.match("/_app-metrics"), "")
-        assert_equal(self.mw.match("/_app-metrics/test"), "/test")
-        assert_equal(self.mw.match("/_app-metrics_test"), None)
-        assert_equal(self.mw.match("/test"), None)
-        assert_equal(self.mw.match("/_app-metrics/"), "/")
+    def tearDown(self):
+        self.patch.stop()
 
     def test_call_not_matching(self):
         res = self.mw(env("/"), self.start_response)
@@ -36,43 +87,66 @@ class TestAppMetricsMiddleware(object):
             self.app.call_args_list,
             [mock.call(env("/"), self.start_response)])
 
-    @mock.patch('appmetrics.wsgi.AppMetricsHandler')
-    def test_call_with_invalid_status(self, handler):
-        handler().handle.return_value = (302, "")
+    def test_call_not_matching_2(self):
+        res = self.mw(env("/test"), self.start_response)
+        assert_equal(res, self.app.return_value)
+        assert_false(self.start_response.called)
+        assert_equal(
+            self.app.call_args_list,
+            [mock.call(env("/test"), self.start_response)])
+
+    def test_call_not_matching_3(self):
+        res = self.mw(env("/_app-metrics/test/sub"), self.start_response)
+        assert_equal(res, self.app.return_value)
+        assert_false(self.start_response.called)
+        assert_equal(
+            self.app.call_args_list,
+            [mock.call(env("/_app-metrics/test/sub"), self.start_response)])
+
+    def test_call_without_trailing_slash(self):
+        self.handler.side_effect = ValueError()
 
         self.mw(env("/_app-metrics", REQUEST_METHOD='GET'), self.start_response)
 
         assert_equal(
             self.start_response.call_args_list,
-            [mock.call("500 Internal Server Error", mock.ANY)]
+            [mock.call("301 MOVED PERMANENTLY", mock.ANY)]
         )
 
-    @mock.patch('appmetrics.wsgi.AppMetricsHandler')
-    def test_call_with_error_implicit(self, handler):
-        handler().handle.return_value = (400, None)
+    def test_call_with_invalid_status(self):
+        self.handler.side_effect = ValueError()
 
-        body = self.mw(env("/_app-metrics", REQUEST_METHOD='GET'), self.start_response)
+        self.mw(env("/_app-metrics/", REQUEST_METHOD='GET'), self.start_response)
 
-        expected_body = self.mw.error_body(400)
-        assert_equal(body, [expected_body])
+        assert_equal(
+            self.start_response.call_args_list,
+            [mock.call("500 INTERNAL SERVER ERROR", mock.ANY)]
+        )
+
+    def test_call_with_error_implicit(self):
+        self.handler.side_effect = werkzeug.exceptions.BadRequest()
+
+        body = self.mw(env("/_app-metrics/", REQUEST_METHOD='GET'), self.start_response)
+
+        expected_body = json.dumps(werkzeug.exceptions.BadRequest.description)
+        assert_equal(list(body), [expected_body])
 
         expected_headers = [
-            ('Content-Type', 'text/html'),
+            ('Content-Type', 'application/json'),
             ('Content-Length', str(len(expected_body)))
         ]
         assert_equal(
             self.start_response.call_args_list,
-            [mock.call("400 Bad Request", expected_headers)]
+            [mock.call("400 BAD REQUEST", expected_headers)]
         )
 
-    @mock.patch('appmetrics.wsgi.AppMetricsHandler')
-    def test_call_with_error_explicit(self, handler):
-        handler().handle.return_value = (400, "bad request received")
+    def test_call_with_error_explicit(self):
+        self.handler.side_effect = werkzeug.exceptions.BadRequest(description="bad request received")
 
-        body = self.mw(env("/_app-metrics", REQUEST_METHOD='GET'), self.start_response)
+        body = self.mw(env("/_app-metrics/", REQUEST_METHOD='GET'), self.start_response)
 
         expected_body = json.dumps("bad request received")
-        assert_equal(body, [expected_body])
+        assert_equal(list(body), [expected_body])
 
         expected_headers = [
             ('Content-Type', 'application/json'),
@@ -80,17 +154,33 @@ class TestAppMetricsMiddleware(object):
         ]
         assert_equal(
             self.start_response.call_args_list,
-            [mock.call("400 Bad Request", expected_headers)]
+            [mock.call("400 BAD REQUEST", expected_headers)]
         )
 
-    @mock.patch('appmetrics.wsgi.AppMetricsHandler')
-    def test_call_ok(self, handler):
-        handler().handle.return_value = (200, str(json.dumps("results")))
+    def test_call_ok(self):
+        self.handler.return_value = json.dumps("results")
 
-        body = self.mw(env("/_app-metrics", REQUEST_METHOD='GET'), self.start_response)
+        body = self.mw(env("/_app-metrics/", REQUEST_METHOD='GET'), self.start_response)
+
+        expected_headers = [
+            ('Content-Type', 'application/json'),
+            ('Content-Length', str(len(self.handler.return_value)))
+        ]
+        assert_equal(
+            self.start_response.call_args_list,
+            [mock.call("200 OK", expected_headers)]
+        )
+
+        assert_equal(list(body), [self.handler.return_value])
+
+
+    def test_call_with_unicode(self):
+        self.handler.return_value = unicode(json.dumps("results"))
+
+        body = self.mw(env("/_app-metrics/", REQUEST_METHOD='GET'), self.start_response)
 
         expected_body = json.dumps("results")
-        assert_equal(body, [expected_body])
+        assert_equal(list(body), [expected_body])
 
         expected_headers = [
             ('Content-Type', 'application/json'),
@@ -101,39 +191,8 @@ class TestAppMetricsMiddleware(object):
             [mock.call("200 OK", expected_headers)]
         )
 
-    @mock.patch('appmetrics.wsgi.AppMetricsHandler')
-    def test_call_with_unicode(self, handler):
-        handler().handle.return_value = (200, unicode(json.dumps("results")))
 
-        body = self.mw(env("/_app-metrics", REQUEST_METHOD='GET'), self.start_response)
-
-        expected_body = json.dumps("results")
-        assert_equal(body, [expected_body])
-
-        expected_headers = [
-            ('Content-Type', 'application/json'),
-            ('Content-Length', str(len(expected_body)))
-        ]
-        assert_equal(
-            self.start_response.call_args_list,
-            [mock.call("200 OK", expected_headers)]
-        )
-
-class TestAppMetricsHandlerList(object):
-    def test_with_wrong_method(self):
-        hh = wsgi.AppMetricsHandler(None)
-
-        assert_equal(hh.handle("POST", ""), (405, ""))
-
-    @mock.patch('appmetrics.wsgi.metrics.metrics')
-    def test_good(self, metrics):
-        metrics.return_value = ["test1", "test2"]
-
-        hh = wsgi.AppMetricsHandler(None)
-
-        assert_equal(hh.handle("GET", ""), (200, '["test1", "test2"]'))
-
-class TestAppMetricsHandlerMetric(object):
+class TestWSGIHandlers(object):
     def setUp(self):
         self.original_registry = metrics.REGISTRY
         metrics.REGISTRY.clear()
@@ -141,178 +200,114 @@ class TestAppMetricsHandlerMetric(object):
     def tearDown(self):
         metrics.REGISTRY.update(self.original_registry)
 
+    @mock.patch('appmetrics.wsgi.metrics.metrics')
+    def test_handle_metrics_list(self, metrics):
+        metrics.return_value = ["test1", "test2"]
+
+        assert_equal(wsgi.handle_metrics_list(mock.Mock()), '["test1", "test2"]')
+
     @mock.patch('appmetrics.wsgi.metrics.metric')
-    def test_GET(self, metric):
+    def test_handle_metric_show(self, metric):
         metric().get.return_value = "this is a test"
 
-        hh = wsgi.AppMetricsHandler(None)
-
-        res = hh.handle("GET", "test")
-
-        expected = 200, '"this is a test"'
-
-        assert_equal(res, expected)
+        assert_equal(wsgi.handle_metric_show(mock.Mock(), "test"), '"this is a test"')
 
     @mock.patch('appmetrics.wsgi.metrics.metric')
-    def test_GET_not_found(self, metric):
+    def test_handle_metric_show_not_found(self, metric):
         metric.side_effect = KeyError("key")
 
-        hh = wsgi.AppMetricsHandler(None)
+        with assert_raises(werkzeug.exceptions.NotFound) as exc:
+            wsgi.handle_metric_show(mock.Mock(), "test")
 
-        res = hh.handle("GET", "/test")
+        assert_equal(exc.exception.description, "No such metric: 'test'")
 
-        expected = 404, "No such metric: 'test'"
-
-        assert_equal(res, expected)
-
-    def test_DELETE(self):
+    def test_handle_metric_delete(self):
         with mock.patch.dict('appmetrics.metrics.REGISTRY', dict(test=mock.Mock())):
-            hh = wsgi.AppMetricsHandler(None)
+            res = wsgi.handle_metric_delete(mock.Mock(), "test")
 
-            res = hh.handle("DELETE", "/test")
-
-            assert_equal(res, (200, "deleted"))
+            assert_equal(res, "deleted")
             assert_equal(metrics.REGISTRY, dict())
 
-    def test_DELETE_not_found(self):
+    def test_handle_metric_delete_not_found(self):
         with mock.patch.dict('appmetrics.metrics.REGISTRY', dict(none="test")):
-            hh = wsgi.AppMetricsHandler(None)
+            res = wsgi.handle_metric_delete(mock.Mock(), "test")
 
-            res = hh.handle("DELETE", "/test")
-
-            assert_equal(res, (200, "not deleted"))
+            assert_equal(res, "not deleted")
             assert_equal(metrics.REGISTRY, dict(none="test"))
 
-    def test_unsupported_method(self):
-        hh = wsgi.AppMetricsHandler(None)
+    @raises(werkzeug.exceptions.UnsupportedMediaType)
+    def test_get_body_no_content_type(self):
+        request = werkzeug.wrappers.Request(dict(CONTENT_LENGTH=10))
 
-        res = hh.handle("OPTIONS", "/test")
+        wsgi.get_body(request)
 
-        assert_equal(res, (405, None))
+    @raises(werkzeug.exceptions.UnsupportedMediaType)
+    def test_get_body_bad_content_type(self):
+        request = werkzeug.wrappers.Request(dict(CONTENT_LENGTH=10, CONTENT_TYPE='text/html'))
 
-    def test_body_extraction_no_content_length(self):
-        hh = wsgi.AppMetricsHandler({})
+        wsgi.get_body(request)
 
-        res = hh.handle("PUT", "/test")
+    def test_get_body_bad_content(self):
+        env = {'CONTENT_LENGTH': 4, 'CONTENT_TYPE': "application/json", 'wsgi.input': StringIO("test wrong")}
+        request = werkzeug.wrappers.Request(env)
 
-        assert_equal(res, (411, None))
+        with assert_raises(werkzeug.exceptions.BadRequest) as exc:
+            wsgi.get_body(request)
+        assert_equal(exc.exception.description, "invalid json")
 
-    def test_body_extraction_bad_content_length(self):
-        hh = wsgi.AppMetricsHandler(dict(CONTENT_LENGTH="xxx"))
+    def test_get_body(self):
+        env = {'CONTENT_LENGTH': 6, 'CONTENT_TYPE': "application/json", 'wsgi.input': StringIO('"test" with garbage')}
+        request = werkzeug.wrappers.Request(env)
 
-        res = hh.handle("PUT", "/test")
+        assert_equal(wsgi.get_body(request), 'test')
 
-        assert_equal(res, (400, None))
+    def test_handle_metric_new_missing_type(self):
+        with assert_raises(werkzeug.exceptions.BadRequest) as exc:
+            wsgi.handle_metric_new(req(dict()), "test")
+        assert_equal(exc.exception.description, "metric type not provided")
 
-    def test_body_extraction_no_content_type(self):
-        hh = wsgi.AppMetricsHandler(dict(CONTENT_LENGTH=10))
+    def test_handle_metric_new_invalid_type(self):
+        with assert_raises(werkzeug.exceptions.BadRequest) as exc:
+            wsgi.handle_metric_new(req(dict(type="xxx")), "test")
+        assert_equal(exc.exception.description, "invalid metric type: u'xxx'")
 
-        res = hh.handle("PUT", "/test")
+    def test_handle_metric_new_app_error(self):
+        wsgi.handle_metric_new(req(dict(type="gauge")), "test")
 
-        assert_equal(res, (415, None))
+        with assert_raises(werkzeug.exceptions.BadRequest) as exc:
+            wsgi.handle_metric_new(req(dict(type="gauge")), "test")
+        assert_equal(exc.exception.description, "can't create metric gauge('test'): Metric test already exists of type Gauge")
 
-    def test_body_extraction_bad_content_type(self):
-        hh = wsgi.AppMetricsHandler(dict(CONTENT_LENGTH=10, CONTENT_TYPE="text/html"))
-
-        res = hh.handle("PUT", "/test")
-
-        assert_equal(res, (415, None))
-
-    def test_body_bad_content(self):
-        env = dict(CONTENT_LENGTH=4, CONTENT_TYPE="application/json")
-        env['wsgi.input'] = StringIO("test wrong")
-        hh = wsgi.AppMetricsHandler(env)
-
-        res = hh.handle("PUT", "/test")
-
-        assert_equal(res, (400, "invalid json"))
-
-    def test_dispatch_PUT_with_body(self):
-        env = dict(CONTENT_LENGTH=6, CONTENT_TYPE="application/json")
-        env['wsgi.input'] = StringIO('"test" with garbage')
-        hh = wsgi.AppMetricsHandler(env)
-        hh.add_value = mock.Mock()
-        hh.add_metric = mock.MagicMock(return_value=(mock.Mock(), mock.Mock()))
-
-        res = hh.handle("PUT", "/metric")
-
-        assert_equal(res, hh.add_metric.return_value)
-        assert_equal(
-            hh.add_metric.call_args_list,
-            [mock.call("metric", "test")]
-        )
-        assert_false(hh.add_value.called)
-
-    def test_dispatch_POST_with_body(self):
-        env = dict(CONTENT_LENGTH=6, CONTENT_TYPE="application/json")
-        env['wsgi.input'] = StringIO('"test" with garbage')
-        hh = wsgi.AppMetricsHandler(env)
-        hh.add_value = mock.MagicMock(return_value=(mock.Mock(), mock.Mock()))
-        hh.add_metric = mock.Mock()
-
-        res = hh.handle("POST", "/metric")
-
-        assert_equal(res, hh.add_value.return_value)
-        assert_equal(
-            hh.add_value.call_args_list,
-            [mock.call("metric", "test")]
-        )
-        assert_false(hh.add_metric.called)
-
-    def test_add_metric_missing_type(self):
-        hh = wsgi.AppMetricsHandler(None)
-
-        res = hh.add_metric("test", dict())
-        assert_equal(res, (400, "metric type not provided"))
-
-    def test_add_metric_invalid_type(self):
-        hh = wsgi.AppMetricsHandler(None)
-
-        res = hh.add_metric("test", dict(type="xxx"))
-        assert_equal(res, (400, "invalid metric type: 'xxx'"))
-
-    def test_add_metric_app_error(self):
-        hh = wsgi.AppMetricsHandler(None)
-
-        res = hh.add_metric("test", dict(type="gauge"))
-        res = hh.add_metric("test", dict(type="gauge"))
-        assert_equal(res, (400, "can't create metric gauge('test'): Metric test already exists of type Gauge"))
-
-    def test_add_metric_generic_error(self):
+    def test_handle_metric_new_generic_error(self):
         new_gauge = mock.Mock(side_effect=ValueError("an error"))
 
         with mock.patch.dict('appmetrics.wsgi.metrics.METRIC_TYPES', gauge=new_gauge):
-            hh = wsgi.AppMetricsHandler(None)
+            with assert_raises(werkzeug.exceptions.BadRequest) as exc:
+                wsgi.handle_metric_new(req(dict(type="gauge")), "test")
+            assert_equal(exc.exception.description, "can't create metric gauge('test')")
 
-            res = hh.add_metric("test", dict(type="gauge"))
-            assert_equal(res, (400, "can't create metric gauge('test')"))
-
-    def test_add_metric(self):
-        hh = wsgi.AppMetricsHandler(None)
-
-        res = hh.add_metric("test", dict(type="gauge"))
-        assert_equal(res, (200, ""))
+    def test_handle_metric_new_metric(self):
+        res = wsgi.handle_metric_new(req(dict(type="gauge")), "test")
+        assert_equal(res, "")
 
         metric = metrics.metric("test")
         assert_is_instance(metric, metrics.simple_metrics.Gauge)
 
-    def test_add_value_missing_value(self):
-        hh = wsgi.AppMetricsHandler(None)
+    def test_handle_metric_update_missing_value(self):
 
-        res = hh.add_value("test", dict())
-        assert_equal(res, (400, "metric value not provided"))
+        with assert_raises(werkzeug.exceptions.BadRequest) as exc:
+            wsgi.handle_metric_update(req(dict()), "test")
+        assert_equal(exc.exception.description, "metric value not provided")
 
-    def test_add_value_missing_metric(self):
-        hh = wsgi.AppMetricsHandler(None)
+    @raises(werkzeug.exceptions.NotFound)
+    def test_handle_metric_update_missing_metric(self):
+        wsgi.handle_metric_update(req(dict(value=1)), "test")
 
-        res = hh.add_value("test", dict(value=1))
-        assert_equal(res, (404, None))
-
-    def test_add_value(self):
-        hh = wsgi.AppMetricsHandler(None)
-
+    def test_handle_metric_update(self):
         metric = metrics.new_gauge("test")
-        res = hh.add_value("test", dict(value=1.5))
-        assert_equal(res, (200, ""))
+
+        res = wsgi.handle_metric_update(req(dict(value=1.5)), "test")
+        assert_equal(res, "")
 
         assert_equal(metric.get(), 1.5)
+

@@ -246,7 +246,15 @@ is called. The following resources are defined:
     Request's ``content-type`` must be ``"application/json"``.
 
 
-The root can be different from ``"/_app-metrics"``, you can pass it to the middleware constructor.
+The root doesn't have to be ``"/_app-metrics"``, you can customize it by providing your own to
+the middleware constructor.
+
+A standalone ``AppMetrics`` webapp can be started by using ``werkzeug``'s development server::
+
+    $ python -m werkzeug.serving appmetrics.wsgi.standalone_app
+    * Running on http://127.0.0.1:5000/
+
+The standalone app mounts on the root (no ``_app-metrics`` prefix). DON'T use it for production purposes!!!
 
 
 Testing
