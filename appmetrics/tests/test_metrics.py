@@ -127,3 +127,220 @@ class TestMetricsModule(object):
 
         assert_is_instance(metric, meter.Meter)
 
+    @mock.patch('appmetrics.metrics.time')
+    def test_with_histogram(self, time):
+        # emulate the time spent in the function by patching time.time() and returning
+        # two known values.
+        times = [5, 3.4]
+        time.time.side_effect = times.pop
+
+        # decorated function
+        @mm.with_histogram("test")
+        def fun(v1, v2):
+            """a docstring"""
+
+            return v1+v2
+
+        assert_equal(fun.__doc__, "a docstring")
+
+        res = fun(1, 2)
+        assert_equal(res, 3)
+
+        assert_equal(mm.metric("test").raw_data(), [1.6])
+
+    @mock.patch('appmetrics.metrics.time')
+    def test_with_histogram_with_method(self, time):
+        # emulate the time spent in the function by patching time.time() and returning
+        # two known values.
+        times = [5, 3.4]
+        time.time.side_effect = times.pop
+
+        # decorated method
+        class MyClass(object):
+            def __init__(self, v1):
+                self.v1 = v1
+
+            @mm.with_histogram("test")
+            def method(self, v2):
+                """a docstring"""
+
+                return self.v1+v2
+
+        assert_equal(MyClass.method.__doc__, "a docstring")
+
+        obj = MyClass(1)
+
+        assert_equal(obj.method.__doc__, "a docstring")
+
+        res = obj.method(2)
+        assert_equal(res, 3)
+
+        assert_equal(mm.metric("test").raw_data(), [1.6])
+
+    def test_with_histogram_multiple(self):
+        @mm.with_histogram("test")
+        def f1(v1, v2):
+            """a docstring"""
+
+            return v1+v2
+
+        @mm.with_histogram("test")
+        def f2(v1, v2):
+            """another docstring"""
+
+            return v1*v2
+
+        assert_equal(f1.__doc__, "a docstring")
+        assert_equal(f2.__doc__, "another docstring")
+
+        res = f1(1, 2)
+        assert_equal(res, 3)
+
+        res = f2(2, 3)
+        assert_equal(res, 6)
+
+        assert_equal(len(mm.metric("test").raw_data()), 2)
+
+    @mock.patch('appmetrics.metrics.warnings.warn')
+    def test_with_histogram_multiple_and_arguments(self, warn):
+        @mm.with_histogram("test")
+        def f1(v1, v2):
+            """a docstring"""
+
+            return v1+v2
+
+        @mm.with_histogram("test", size=100)
+        def f2(v1, v2):
+            """another docstring"""
+
+            return v1*v2
+
+        assert_equal(f1.__doc__, "a docstring")
+        assert_equal(f2.__doc__, "another docstring")
+
+        assert_in("ignored", warn.call_args[0][0])
+
+        res = f1(1, 2)
+        assert_equal(res, 3)
+
+        res = f2(2, 3)
+        assert_equal(res, 6)
+
+        assert_equal(len(mm.metric("test").raw_data()), 2)
+
+    @raises(exceptions.DuplicateMetricError)
+    def test_with_histogram_multiple_different_type(self):
+        mm.new_gauge("test")
+
+        @mm.with_histogram("test")
+        def f2(v1, v2):
+            """another docstring"""
+
+            return v1*v2
+
+    def test_with_meter(self):
+
+        @mm.with_meter("test")
+        def fun(v):
+            """a docstring"""
+
+            return v*2
+
+        assert_equal(fun.__doc__, "a docstring")
+
+        res = [fun(i) for i in range(6)]
+        assert_equal(res, [0, 2, 4, 6, 8, 10])
+
+        assert_equal(mm.metric("test").raw_data(), 6)
+
+    def test_with_meter_with_method(self):
+
+        class MyClass(object):
+            def __init__(self, v):
+                self.v = v
+
+            @mm.with_meter("test")
+            def m1(self, v):
+                """a docstring"""
+
+                return v*self.v
+
+            @mm.with_meter("test")
+            def m2(self, v):
+                """another docstring"""
+
+                return v+self.v
+
+        assert_equal(MyClass.m1.__doc__, "a docstring")
+        assert_equal(MyClass.m2.__doc__, "another docstring")
+
+        obj = MyClass(2)
+
+        res = [obj.m1(i) for i in range(3)]
+        assert_equal(res, [0, 2, 4])
+
+        res = [obj.m2(i) for i in range(3)]
+        assert_equal(res, [2, 3, 4])
+
+        assert_equal(mm.metric("test").raw_data(), 6)
+
+    def test_with_meter_multiple(self):
+        @mm.with_meter("test")
+        def f1(v1, v2):
+            """a docstring"""
+
+            return v1+v2
+
+        @mm.with_meter("test")
+        def f2(v1, v2):
+            """another docstring"""
+
+            return v1*v2
+
+        assert_equal(f1.__doc__, "a docstring")
+        assert_equal(f2.__doc__, "another docstring")
+
+        res = f1(1, 2)
+        assert_equal(res, 3)
+
+        res = f2(2, 3)
+        assert_equal(res, 6)
+
+        assert_equal(mm.metric("test").raw_data(), 2)
+
+    @mock.patch('appmetrics.metrics.warnings.warn')
+    def test_with_meter_multiple_and_arguments(self, warn):
+        @mm.with_meter("test")
+        def f1(v1, v2):
+            """a docstring"""
+
+            return v1+v2
+
+        @mm.with_meter("test", tick_interval=100)
+        def f2(v1, v2):
+            """another docstring"""
+
+            return v1*v2
+
+        assert_equal(f1.__doc__, "a docstring")
+        assert_equal(f2.__doc__, "another docstring")
+
+        assert_in("ignored", warn.call_args[0][0])
+
+        res = f1(1, 2)
+        assert_equal(res, 3)
+
+        res = f2(2, 3)
+        assert_equal(res, 6)
+
+        assert_equal(mm.metric("test").raw_data(), 2)
+
+    @raises(exceptions.DuplicateMetricError)
+    def test_with_meter_multiple_different_type(self):
+        mm.new_gauge("test")
+
+        @mm.with_meter("test")
+        def f2(v1, v2):
+            """another docstring"""
+
+            return v1*v2

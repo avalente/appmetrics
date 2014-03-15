@@ -18,7 +18,10 @@
 Main interface module
 """
 
+import functools
 import threading
+import time
+import warnings
 
 from .exceptions import DuplicateMetricError, InvalidMetricError
 from . import histogram, simple_metrics, meter
@@ -124,6 +127,68 @@ def new_meter(name, tick_interval=5):
     """
 
     return new_metric(name, meter.Meter, tick_interval)
+
+
+def with_histogram(name, *metric_args, **metric_kwargs):
+    """
+    Time-measuring decorator: the time spent in the wrapped function is measured
+    and added to the named metric.
+    metric_args and metric_kwargs are passed to new_histogram()
+    """
+
+    try:
+        hmetric = new_histogram(name, *metric_args, **metric_kwargs)
+    except DuplicateMetricError, e:
+        if metric_args or metric_kwargs:
+            warnings.warn("{}: the given arguments will be ignored".format(e))
+        hmetric = metric(name)
+        if not isinstance(hmetric, histogram.Histogram):
+            raise DuplicateMetricError("Metric {} already exists of type {}".format(name, type(hmetric).__name__))
+
+    def wrapper(f):
+
+        @functools.wraps(f)
+        def fun(*args, **kwargs):
+            t1 = time.time()
+            res = f(*args, **kwargs)
+            t2 = time.time()
+
+            hmetric.notify(t2-t1)
+            return res
+
+        return fun
+
+    return wrapper
+
+
+def with_meter(name, *metric_args, **metric_kwargs):
+    """
+    Call-counting decorator: each time the wrapped function is called
+    the named meter is incremented by one.
+    metric_args and metric_kwargs are passed to new_meter()
+    """
+
+    try:
+        mmetric = new_meter(name, *metric_args, **metric_kwargs)
+    except DuplicateMetricError, e:
+        if metric_args or metric_kwargs:
+            warnings.warn("{}: the given arguments will be ignored".format(e))
+        mmetric = metric(name)
+        if not isinstance(mmetric, meter.Meter):
+            raise DuplicateMetricError("Metric {} already exists of type {}".format(name, type(mmetric).__name__))
+
+    def wrapper(f):
+
+        @functools.wraps(f)
+        def fun(*args, **kwargs):
+            res = f(*args, **kwargs)
+
+            mmetric.notify(1)
+            return res
+
+        return fun
+
+    return wrapper
 
 
 METRIC_TYPES = {

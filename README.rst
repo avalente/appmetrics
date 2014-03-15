@@ -22,8 +22,8 @@ you must provide your own persistence layer, maybe by using well established mon
 Usage
 -----
 
-Once that you installed ``AppMetrics`` package in your python environment
-(a ``python setup.py install`` is enough), you can access it by the ``metrics`` module::
+Once you have installed ``AppMetrics`` package in your python environment
+(a ``pip install appmetrics`` is usually enough), you can access it by the ``metrics`` module::
 
     >>> from appmetrics import metrics
     >>> histogram = metrics.new_histogram("test")
@@ -44,6 +44,18 @@ an internal registry, so you can access it in different places in your applicati
     True
 
 The ``metrics`` registry is thread-safe, you can safely use it in multi-threaded web servers.
+
+
+Decorators
+**********
+
+The ``metrics`` module also provides a couple of decorators: ``with_histogram`` and ``with_meter`` which are
+an easy and fast way to use ``AppMetrics``: just decorate your functions/methods and you will have metrics
+collected for them. You can decorate multiple functions with the same metric's name, as long as the decorator's
+type is the same, or a ``DuplicateMetricError`` will be raised. If you decorate two functions with the same
+type and name but different parameters, the second one's parameters will be ignored: the first metric
+definition will be used and a warning will be issued.
+See the documentation for `Histograms`_ and `Meters`_ for more details.
 
 
 API
@@ -120,6 +132,18 @@ the ``get`` method computes and returns the following values:
 Notice that the ``notify`` method tries to cast the input value to a float, so a ``TypeError`` or a ``ValueError`` may
 be raised.
 
+You can use the histogram metric also by the ``with_histogram`` decorator: the time spent in the decorated
+function will be collected by an ``histogram`` with the given name::
+
+    >>> @metrics.with_histogram("histogram_test")
+    ... def fun(v):
+    ...     return v*2
+    ...
+    >>> fun(10)
+    20
+    >>> metrics.metric("histogram_test").raw_data()
+    [5.9604644775390625e-06]
+
 Sample types
 ^^^^^^^^^^^^
 
@@ -155,6 +179,9 @@ The return values of the ``get`` method are the following:
 
 Notice that the ``notify`` method tries to cast the input value to an integer, so a ``TypeError`` or a ``ValueError``
 may be raised.
+
+You can use the meter metric also by the ``with_meter`` decorator: the number of calls to the decorated
+function will be collected by a ``meter`` with the given name.
 
 External access
 ---------------
