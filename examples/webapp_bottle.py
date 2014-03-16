@@ -68,4 +68,4 @@ def is_prime(n):
 if __name__ == '__main__':
     from appmetrics.wsgi import AppMetricsMiddleware
     myapp = AppMetricsMiddleware(app())
-    run(app=myapp, port=5001, threaded=True, debug=True)
+    run(app=myapp, port=5000, threaded=True, debug=True)
