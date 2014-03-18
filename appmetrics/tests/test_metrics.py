@@ -1,5 +1,5 @@
 import mock
-from nose.tools import assert_equal, assert_in, raises, assert_is, assert_is_instance
+from nose.tools import assert_equal, assert_in, raises, assert_is, assert_is_instance, assert_false
 
 from .. import metrics as mm, exceptions, histogram, simple_metrics as simple, meter
 
@@ -7,10 +7,17 @@ from .. import metrics as mm, exceptions, histogram, simple_metrics as simple, m
 class TestMetricsModule(object):
     def setUp(self):
         self.original_registy = mm.REGISTRY.copy()
+        self.original_tags = mm.TAGS.copy()
+
+        mm.REGISTRY.clear()
+        mm.TAGS.clear()
 
     def tearDown(self):
         mm.REGISTRY.clear()
         mm.REGISTRY.update(self.original_registy)
+
+        mm.TAGS.clear()
+        mm.TAGS.update(self.original_tags)
 
     def test_new_metric(self):
         Cls = mock.Mock()
@@ -87,6 +94,19 @@ class TestMetricsModule(object):
 
         assert_equal(mm.delete_metric("test3"), None)
         assert_equal(mm.REGISTRY, dict(test1=m1, test2=m2))
+
+    def test_delete_metric_with_tags(self):
+        mm.TAGS = {"test": {"test1", "test3"}}
+
+        m1 = mock.Mock()
+        m2 = mock.Mock()
+        m3 = mock.Mock()
+        mm.REGISTRY = dict(test1=m1, test2=m2, test3=m3)
+
+        assert_equal(mm.delete_metric("test1"), m1)
+        assert_equal(mm.REGISTRY, dict(test2=m2, test3=m3))
+
+        assert_equal(mm.TAGS["test"], {"test3"})
 
     def test_new_histogram_default(self):
         metric = mm.new_histogram("test")
@@ -344,3 +364,54 @@ class TestMetricsModule(object):
             """another docstring"""
 
             return v1*v2
+
+    @raises(exceptions.InvalidMetricError)
+    def test_tag_invalid_name(self):
+        mm.tag("test", "test")
+
+    def test_tag(self):
+        m1 = mock.Mock()
+        m2 = mock.Mock()
+        m3 = mock.Mock()
+
+        mm.REGISTRY = {"test1": m1, "test2": m2, "test3": m3}
+        mm.tag("test1", "1")
+        mm.tag("test3", "1")
+        mm.tag("test2", "2")
+
+        assert_equal(mm.TAGS, {"1": {"test1", "test3"}, "2": {"test2"}})
+
+    def test_tags(self):
+        mm.TAGS = {"1": {"test1", "test3"}, "2": {"test2"}}
+
+        assert_equal(mm.tags(), mm.TAGS)
+        assert_false(mm.tags() is mm.TAGS)
+
+    def test_metrics_by_tag_invalid_tag(self):
+        mm.TAGS = {"1": {"test1", "test3"}, "2": {"test2"}}
+
+        assert_equal(mm.metrics_by_tag("test"), {})
+
+    def test_metrics_by_tag(self):
+        m1 = mock.Mock()
+        m2 = mock.Mock()
+        m3 = mock.Mock()
+
+        mm.REGISTRY = {"test1": m1, "test2": m2, "test3": m3}
+        mm.TAGS = {"1": {"test1", "test3"}, "2": {"test3"}}
+
+        assert_equal(mm.metrics_by_tag("1"), {"test1": m1.get(), "test3": m3.get()})
+
+    def test_metrics_by_tag_deletion_while_looping(self):
+        m1 = mock.Mock()
+        m2 = mock.Mock()
+        m3 = mock.Mock()
+
+        m2.get.side_effect = exceptions.InvalidMetricError
+
+        mm.REGISTRY = {"test1": m1, "test2": m2, "test3": m3}
+        mm.TAGS = {"1": {"test1", "test2", "test3"}, "2": {"test2"}}
+
+
+        assert_equal(mm.metrics_by_tag("1"), {"test1": m1.get(), "test3": m3.get()})
+

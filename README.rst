@@ -183,6 +183,34 @@ may be raised.
 You can use the meter metric also by the ``with_meter`` decorator: the number of calls to the decorated
 function will be collected by a ``meter`` with the given name.
 
+Tagging
+-------
+
+You can group several metrics together by "tagging" them::
+
+    >>> metrics.new_histogram("test1")
+    <appmetrics.histogram.Histogram object at 0x10ac2a950>
+    >>> metrics.new_gauge("test2")
+    <appmetrics.simple_metrics.Gauge object at 0x10ac2a990>
+    >>> metrics.new_meter("test3")
+    <appmetrics.meter.Meter object at 0x10ac2a9d0>
+    >>> metrics.tag("test1", "group1")
+    >>> metrics.tag("test3", "group1")
+    >>> metrics.tags()
+    {'group1': set(['test1', 'test3'])}
+    >>> metrics.metrics_by_tag("group1")
+    {'test1': {'arithmetic_mean': 0.0, 'skewness': 0.0, 'harmonic_mean': 0.0, 'min': 0, 'standard_deviation': 0.0, 'median': 0.0, 'histogram': [(0, 0)], 'percentile': [(50, 0.0), (75, 0.0), (90, 0.0), (95, 0.0), (99, 0.0), (99.9, 0.0)], 'n': 0, 'max': 0, 'variance': 0.0, 'geometric_mean': 0.0, 'kurtosis': 0.0}, 'test3': {'count': 0, 'five': 0.0, 'mean': 0.0, 'fifteen': 0.0, 'day': 0.0, 'one': 0.0}}
+
+As you can see above, three functions are available:
+
+ * ``metrics.tag(metric_name, tag_name)``: tag the metric named ``<metric_name>`` with ``<tag_name>``.
+   Raise ``InvalidMetricError`` if ``<metric_name>`` does not exist.
+ * ``metrics.tags()``: return the currently defined tags.
+ * ``metrics.metrics_by_tag(tag_name)``: return a dictionary with metric names as keys
+   and metric values as returned by ``<metric_object>.get()``. Return an empty dictionary if ``tag_name`` does
+   not exist.
+
+
 External access
 ---------------
 

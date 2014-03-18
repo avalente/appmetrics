@@ -26,7 +26,9 @@ import warnings
 from .exceptions import DuplicateMetricError, InvalidMetricError
 from . import histogram, simple_metrics, meter
 
+
 REGISTRY = {}
+TAGS = {}
 LOCK = threading.Lock()
 
 
@@ -53,6 +55,11 @@ def delete_metric(name):
 
     with LOCK:
         old_metric = REGISTRY.pop(name, None)
+
+        # look for the metric name in the tags and remove it
+        for tags in TAGS.itervalues():
+            if name in tags:
+                tags.remove(name)
 
     return old_metric
 
@@ -189,6 +196,50 @@ def with_meter(name, *metric_args, **metric_kwargs):
         return fun
 
     return wrapper
+
+
+def tag(name, tag_name):
+    """
+    Tag the named metric with the given tag.
+    """
+
+    with LOCK:
+        # just to check if <name> exists
+        metric(name)
+
+        TAGS.setdefault(tag_name, set()).add(name)
+
+
+def tags():
+    """
+    Return the currently defined tags.
+    """
+
+    # protect global value against accidental modifications
+    return TAGS.copy()
+
+
+def metrics_by_tag(tag_name):
+    """
+    Return a dictionary with {metric name: metric values} for all the metrics with the given tag.
+    Return an empty dictionary if the given tag does not exist.
+    """
+
+    try:
+        names = TAGS[tag_name]
+    except KeyError:
+        return {}
+
+    results = {}
+
+    for name in names:
+        # no lock - a metric could have been removed in the meanwhile
+        try:
+            results[name] = get(name)
+        except InvalidMetricError:
+            continue
+
+    return results
 
 
 METRIC_TYPES = {
