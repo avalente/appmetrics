@@ -14,8 +14,10 @@
 ##  See the License for the specific language governing permissions and
 ##  limitations under the License.
 
+import collections
 import random
 import threading
+import abc
 
 from . import statistics, exceptions
 
@@ -23,7 +25,69 @@ from . import statistics, exceptions
 DEFAULT_UNIFORM_RESERVOIR_SIZE = 1028
 
 
-class UniformReservoir(object):
+class ReservoirBase(object):
+    __metaclass__ = abc.ABCMeta
+
+    """
+    Base class for reservoirs. Subclass and override _do_add, _get_values and _same_parameters
+    """
+
+    def add(self, value):
+        """
+        Add a value to the reservoir
+        The value will be casted to a floating-point, so a TypeError or a ValueError may be raised.
+        """
+
+        if not isinstance(value, float):
+            value = float(value)
+
+        return self._do_add(value)
+
+    @property
+    def values(self):
+        """
+        Return the stored values
+        """
+
+        return self._get_values()
+
+
+    @property
+    def sorted_values(self):
+        """
+        Sort and return the current sample values
+        """
+
+        return sorted(self.values)
+
+    def same_kind(self, other):
+        """
+        Return True if "other" is an object of the same type and it was instantiated with the same parameters
+        """
+
+        return type(self) is type(other) and self._same_parameters(other)
+
+    @abc.abstractmethod
+    def _do_add(self, value):
+        """
+        Add the floating-point value to the reservoir. Override in subclasses
+        """
+
+    @abc.abstractmethod
+    def _get_values(self):
+        """
+        Get the current reservoir's content. Override in subclasses
+        """
+
+    @abc.abstractmethod
+    def _same_parameters(self, other):
+        """
+        Return True if this object has been instantiated with the same parameters as "other".
+        Override in subclasses
+        """
+
+
+class UniformReservoir(ReservoirBase):
     """
     A random sampling reservoir of floating-point values. Uses Vitter's Algorithm R to produce a statistically
     representative sample (http://www.cs.umd.edu/~samir/498/vitter.pdf)
@@ -35,15 +99,7 @@ class UniformReservoir(object):
         self.count = 0
         self.lock = threading.Lock()
 
-    def add(self, value):
-        """
-        Add a value to the reservoir
-        The value will be casted to a floating-point, so a TypeError or a ValueError may be raised.
-        """
-
-        if not isinstance(value, float):
-            value = float(value)
-
+    def _do_add(self, value):
         changed = False
 
         with self.lock:
@@ -60,22 +116,36 @@ class UniformReservoir(object):
 
         return changed
 
-    @property
-    def values(self):
-        """
-        Return the stored values
-        """
-
+    def _get_values(self):
         if self.count < self.size:
             return self._values[:self.count]
         return self._values
 
-    @property
-    def sorted_values(self):
-        """
-        Sort and return the current sample values
-        """
-        return sorted(self.values)
+    def _same_parameters(self, other):
+        return self.size == other.size
+
+    def __repr__(self):
+        return "{}({})".format(type(self).__name__, self.size)
+
+
+class SlidingWindowReservoir(ReservoirBase):
+    def __init__(self, size=DEFAULT_UNIFORM_RESERVOIR_SIZE):
+        self.size = size
+        self.deque = collections.deque(maxlen=self.size)
+
+    def _do_add(self, value):
+        # No need for explicit lock - deques should be thread-safe:
+        # http://docs.python.org/2/library/collections.html#collections.deque
+        self.deque.append(value)
+
+    def _get_values(self):
+        return list(self.deque)
+
+    def _same_parameters(self, other):
+        return self.size == other.size
+
+    def __repr__(self):
+        return "{}({})".format(type(self).__name__, self.size)
 
 
 class Histogram(object):

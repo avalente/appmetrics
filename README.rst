@@ -52,9 +52,7 @@ Decorators
 The ``metrics`` module also provides a couple of decorators: ``with_histogram`` and ``with_meter`` which are
 an easy and fast way to use ``AppMetrics``: just decorate your functions/methods and you will have metrics
 collected for them. You can decorate multiple functions with the same metric's name, as long as the decorator's
-type is the same, or a ``DuplicateMetricError`` will be raised. If you decorate two functions with the same
-type and name but different parameters, the second one's parameters will be ignored: the first metric
-definition will be used and a warning will be issued.
+type and parameters are the same, or a ``DuplicateMetricError`` will be raised.
 See the documentation for `Histograms`_ and `Meters`_ for more details.
 
 
@@ -67,7 +65,8 @@ API
  * ``get()``           - get the computed metric's value (if any)
  * ``raw_data()``      - get the raw data stored in the metrics
 
-However, the ``notify`` input type depends on the kind of metric chosen.
+However, the ``notify`` input type and the ``get()`` and ``raw_data()`` data format depend on the kind
+of metric chosen.
 
 Metrics
 -------
@@ -144,13 +143,37 @@ function will be collected by an ``histogram`` with the given name::
     >>> metrics.metric("histogram_test").raw_data()
     [5.9604644775390625e-06]
 
+The full signature is::
+
+    with_histogram(name, reservoir_type, *reservoir_args, **reservoir_kwargs)
+
+where:
+
+ * name is the metric's name
+ * reservoir_type is a string which identifies a ``reservoir`` class, see reservoirs documentation
+ * reservoir_args and reservoir_kwargs are passed to the chosen reservoir's \_\_init\_\_
+
+
 Sample types
 ^^^^^^^^^^^^
 
-To avoid unbound memory usage, the histogram metrics are generated from a *reservoir* of values. Currently
-the only *reservoir* type available is the *uniform* one, in which a fixed number of values (default 1028)
-is kept, and when the reservoir is full new values replace older ones randomly, ensuring that the
-sample is always statistically representative.
+To avoid unbound memory usage, the histogram metrics are generated from a *reservoir* of values.
+
+Uniform reservoir
+.................
+
+The default *reservoir* type is the *uniform* one, in which a fixed number of values (default 1028)
+is kept, and when the reservoir is full new values replace older ones randomly with an uniform
+probability distribution, ensuring that the sample is always statistically representative.
+This kind of reservoir must be used when you are interested in statistics over the whole stream of
+observations. Use ``"uniform"`` as ``reservoir_type`` in ``with_histogram``.
+
+Sliding window reservoir
+........................
+
+This *reservoir* keeps a fixed number of observations (default 1028) and when a new value comes in the first
+one is discarded. Its ``reservoir_type`` is ``sliding_window``.
+
 
 Meters
 ******

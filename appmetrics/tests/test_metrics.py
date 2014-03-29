@@ -118,7 +118,7 @@ class TestMetricsModule(object):
         assert_equal(metric.reservoir.size, histogram.DEFAULT_UNIFORM_RESERVOIR_SIZE)
 
     def test_new_histogram(self):
-        metric = mm.new_histogram("test", 10)
+        metric = mm.new_histogram("test", histogram.UniformReservoir(10))
 
         assert_is(metric, mm.metric("test"))
 
@@ -146,6 +146,30 @@ class TestMetricsModule(object):
         assert_is(metric, mm.metric("test"))
 
         assert_is_instance(metric, meter.Meter)
+
+    @raises(exceptions.InvalidMetricError)
+    def test_new_reservoir_bad_type(self):
+        mm.new_reservoir('xxx')
+
+    @raises(TypeError)
+    def test_new_reservoir_bad_args(self):
+        mm.new_reservoir('uniform', xxx='yyy')
+
+    def test_new_reservoir_with_defaults(self):
+        reservoir = mm.new_reservoir()
+        assert_is_instance(reservoir, histogram.UniformReservoir)
+        assert_equal(reservoir.size, histogram.DEFAULT_UNIFORM_RESERVOIR_SIZE)
+
+    def test_new_reservoir(self):
+        reservoir = mm.new_reservoir('sliding_window', 5)
+        assert_is_instance(reservoir, histogram.SlidingWindowReservoir)
+        assert_equal(reservoir.size, 5)
+
+    def test_new_histogram_with_implicit_reservoir(self):
+        metric = mm.new_histogram_with_implicit_reservoir('test', 'sliding_window', 5)
+        assert_is_instance(metric, histogram.Histogram)
+        assert_is_instance(metric.reservoir, histogram.SlidingWindowReservoir)
+        assert_equal(metric.reservoir.size, 5)
 
     @mock.patch('appmetrics.metrics.time')
     def test_with_histogram(self, time):
@@ -221,8 +245,17 @@ class TestMetricsModule(object):
 
         assert_equal(len(mm.metric("test").raw_data()), 2)
 
-    @mock.patch('appmetrics.metrics.warnings.warn')
-    def test_with_histogram_multiple_and_arguments(self, warn):
+    @raises(exceptions.InvalidMetricError)
+    def test_with_histogram_bad_reservoir_type(self):
+        # decorated function
+        @mm.with_histogram("test", "xxx")
+        def fun(v1, v2):
+            """a docstring"""
+
+            return v1+v2
+
+    @raises(exceptions.DuplicateMetricError)
+    def test_with_histogram_multiple_and_arguments(self):
         @mm.with_histogram("test")
         def f1(v1, v2):
             """a docstring"""
@@ -234,19 +267,6 @@ class TestMetricsModule(object):
             """another docstring"""
 
             return v1*v2
-
-        assert_equal(f1.__doc__, "a docstring")
-        assert_equal(f2.__doc__, "another docstring")
-
-        assert_in("ignored", warn.call_args[0][0])
-
-        res = f1(1, 2)
-        assert_equal(res, 3)
-
-        res = f2(2, 3)
-        assert_equal(res, 6)
-
-        assert_equal(len(mm.metric("test").raw_data()), 2)
 
     @raises(exceptions.DuplicateMetricError)
     def test_with_histogram_multiple_different_type(self):
@@ -328,8 +348,8 @@ class TestMetricsModule(object):
 
         assert_equal(mm.metric("test").raw_data(), 2)
 
-    @mock.patch('appmetrics.metrics.warnings.warn')
-    def test_with_meter_multiple_and_arguments(self, warn):
+    @raises(exceptions.DuplicateMetricError)
+    def test_with_meter_multiple_and_arguments(self):
         @mm.with_meter("test")
         def f1(v1, v2):
             """a docstring"""
@@ -341,19 +361,6 @@ class TestMetricsModule(object):
             """another docstring"""
 
             return v1*v2
-
-        assert_equal(f1.__doc__, "a docstring")
-        assert_equal(f2.__doc__, "another docstring")
-
-        assert_in("ignored", warn.call_args[0][0])
-
-        res = f1(1, 2)
-        assert_equal(res, 3)
-
-        res = f2(2, 3)
-        assert_equal(res, 6)
-
-        assert_equal(mm.metric("test").raw_data(), 2)
 
     @raises(exceptions.DuplicateMetricError)
     def test_with_meter_multiple_different_type(self):

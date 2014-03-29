@@ -103,12 +103,15 @@ def notify(name, value):
     return metric(name).notify(value)
 
 
-def new_histogram(name, size=histogram.DEFAULT_UNIFORM_RESERVOIR_SIZE):
+def new_histogram(name, reservoir=None):
     """
-    Build a new histogram metric with a uniform reservoir of configurable size
+    Build a new histogram metric with a given reservoir object
+    If the reservoir is not provided, a uniform reservoir with the default size is used
     """
 
-    reservoir = histogram.UniformReservoir(size)
+    if reservoir is None:
+        reservoir = histogram.UniformReservoir(histogram.DEFAULT_UNIFORM_RESERVOIR_SIZE)
+
     return new_metric(name, histogram.Histogram, reservoir)
 
 
@@ -136,21 +139,48 @@ def new_meter(name, tick_interval=5):
     return new_metric(name, meter.Meter, tick_interval)
 
 
-def with_histogram(name, *metric_args, **metric_kwargs):
+def new_histogram_with_implicit_reservoir(name, reservoir_type='uniform', *reservoir_args, **reservoir_kwargs):
+    """
+    Build a new histogram metric and a reservoir from the given parameters
+    """
+
+    reservoir = new_reservoir(reservoir_type, *reservoir_args, **reservoir_kwargs)
+    return new_histogram(name, reservoir)
+
+
+def new_reservoir(reservoir_type='uniform', *reservoir_args, **reservoir_kwargs):
+    """
+    Build a new reservoir
+    """
+
+    try:
+        reservoir_cls = RESERVOIR_TYPES[reservoir_type]
+    except KeyError:
+        raise InvalidMetricError("Unknown reservoir type: {}".format(reservoir_type))
+
+    return reservoir_cls(*reservoir_args, **reservoir_kwargs)
+
+
+def with_histogram(name, reservoir_type="uniform", *reservoir_args, **reservoir_kwargs):
     """
     Time-measuring decorator: the time spent in the wrapped function is measured
     and added to the named metric.
     metric_args and metric_kwargs are passed to new_histogram()
     """
 
+    reservoir = new_reservoir(reservoir_type, *reservoir_args, **reservoir_kwargs)
+
     try:
-        hmetric = new_histogram(name, *metric_args, **metric_kwargs)
-    except DuplicateMetricError, e:
-        if metric_args or metric_kwargs:
-            warnings.warn("{}: the given arguments will be ignored".format(e))
+        hmetric = new_histogram(name, reservoir)
+    except DuplicateMetricError:
         hmetric = metric(name)
         if not isinstance(hmetric, histogram.Histogram):
-            raise DuplicateMetricError("Metric {} already exists of type {}".format(name, type(hmetric).__name__))
+            raise DuplicateMetricError(
+                "Metric {!r} already exists of type {!r}".format(name, type(hmetric).__name__))
+
+        if not hmetric.reservoir.same_kind(reservoir):
+            raise DuplicateMetricError(
+                "Metric {!r} already exists with a different reservoir: {}".format(name, hmetric.reservoir))
 
     def wrapper(f):
 
@@ -168,7 +198,7 @@ def with_histogram(name, *metric_args, **metric_kwargs):
     return wrapper
 
 
-def with_meter(name, *metric_args, **metric_kwargs):
+def with_meter(name, tick_interval=meter.DEFAULT_TICK_INTERVAL):
     """
     Call-counting decorator: each time the wrapped function is called
     the named meter is incremented by one.
@@ -176,13 +206,15 @@ def with_meter(name, *metric_args, **metric_kwargs):
     """
 
     try:
-        mmetric = new_meter(name, *metric_args, **metric_kwargs)
-    except DuplicateMetricError, e:
-        if metric_args or metric_kwargs:
-            warnings.warn("{}: the given arguments will be ignored".format(e))
+        mmetric = new_meter(name, tick_interval)
+    except DuplicateMetricError as e:
         mmetric = metric(name)
+
         if not isinstance(mmetric, meter.Meter):
-            raise DuplicateMetricError("Metric {} already exists of type {}".format(name, type(mmetric).__name__))
+            raise DuplicateMetricError("Metric {!r} already exists of type {}".format(name, type(mmetric).__name__))
+
+        if tick_interval != mmetric.tick_interval:
+            raise DuplicateMetricError("Metric {!r} already exists: {}".format(name, mmetric))
 
     def wrapper(f):
 
@@ -242,8 +274,14 @@ def metrics_by_tag(tag_name):
     return results
 
 
+RESERVOIR_TYPES = {
+    'uniform': histogram.UniformReservoir,
+    'sliding_window': histogram.SlidingWindowReservoir,
+}
+
+
 METRIC_TYPES = {
-    'histogram': new_histogram,
+    'histogram': new_histogram_with_implicit_reservoir,
     'gauge': new_gauge,
     'counter': new_counter,
     'meter': new_meter,

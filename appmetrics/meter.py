@@ -24,6 +24,9 @@ import time
 import threading
 
 
+DEFAULT_TICK_INTERVAL = 5
+
+
 class EWMA(object):
     """
     Compute exponential-weighted moving average of values incoming at a fixed rate.
@@ -88,7 +91,7 @@ class Meter(object):
     values are expressed in number of operation per second.
     """
 
-    def __init__(self, tick_interval=5):
+    def __init__(self, tick_interval=DEFAULT_TICK_INTERVAL):
         self.tick_interval = tick_interval
 
         # one minute
@@ -169,3 +172,6 @@ class Meter(object):
                 day=self.day.rate)
 
         return data
+
+    def __repr__(self):
+        return "{}({})".format(type(self).__name__, self.tick_interval)

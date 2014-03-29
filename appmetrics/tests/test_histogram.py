@@ -1,6 +1,6 @@
 import random
 
-from nose.tools import assert_equal, raises, assert_almost_equal
+from nose.tools import assert_equal, raises, assert_almost_equal, assert_true, assert_false
 import mock
 
 from .. import histogram as mm
@@ -86,6 +86,81 @@ class TestUniformReservoir(object):
     @raises(TypeError)
     def test_add_bad_type(self):
         self.ur.add(None)
+
+    def test_same_kind(self):
+        other = mm.UniformReservoir(self.ur.size)
+        assert_true(self.ur.same_kind(other))
+
+    def test_same_kind_with_different_class(self):
+        other = mm.SlidingWindowReservoir(self.ur.size)
+        assert_false(self.ur.same_kind(other))
+
+    def test_same_kind_with_different_parameters(self):
+        other = mm.UniformReservoir(10)
+        assert_false(self.ur.same_kind(other))
+
+
+class TestSlidingWindowReservoir(object):
+    def setUp(self):
+        self.state = random.getstate()
+        random.seed(42)
+
+        self.size = 5
+        self.swr = mm.SlidingWindowReservoir(self.size)
+
+    def tearDown(self):
+        random.setstate(self.state)
+
+    def test_add_first(self):
+        self.swr.add(1.5)
+        assert_equal(self.swr.values, [1.5])
+
+        self.swr.add(2.5)
+        assert_equal(self.swr.values, [1.5, 2.5])
+
+        self.swr.add(3.5)
+        assert_equal(self.swr.values, [1.5, 2.5, 3.5])
+
+        self.swr.add(4.5)
+        assert_equal(self.swr.values, [1.5, 2.5, 3.5, 4.5])
+
+        self.swr.add(5.5)
+        assert_equal(self.swr.values, [1.5, 2.5, 3.5, 4.5, 5.5])
+
+    def test_add_overflow(self):
+        for i in range(5):
+            self.swr.add(i + 1.5)
+
+        assert_equal(self.swr.values, [1.5, 2.5, 3.5, 4.5, 5.5])
+
+        self.swr.add(10)
+        assert_equal(self.swr.values, [2.5, 3.5, 4.5, 5.5, 10.0])
+
+        self.swr.add(11)
+        assert_equal(self.swr.values, [3.5, 4.5, 5.5, 10.0, 11.0])
+
+    def test_sorted_values(self):
+        for i in range(5):
+            self.swr.add(random.randint(1, 10))
+
+        random.seed(42)
+        assert_equal(self.swr.sorted_values, sorted(random.randint(1, 10) for i in range(5)))
+
+    @raises(TypeError)
+    def test_add_bad_type(self):
+        self.swr.add(None)
+
+    def test_same_kind(self):
+        other = mm.SlidingWindowReservoir(self.swr.size)
+        assert_true(self.swr.same_kind(other))
+
+    def test_same_kind_with_different_class(self):
+        other = mm.UniformReservoir(self.swr.size)
+        assert_false(self.swr.same_kind(other))
+
+    def test_same_kind_with_different_parameters(self):
+        other = mm.SlidingWindowReservoir(10)
+        assert_false(self.swr.same_kind(other))
 
 
 class TestHistogram(object):
