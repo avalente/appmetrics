@@ -18,11 +18,40 @@ import collections
 import random
 import threading
 import abc
+import time
+import operator
 
 from . import statistics, exceptions
 
 
 DEFAULT_UNIFORM_RESERVOIR_SIZE = 1028
+DEFAULT_TIME_WINDOW_SIZE = 60
+
+
+class SortedList(object):
+    """
+    A data structure which keeps the data sorted
+    """
+    #TODO: this approach works quite well with small amounts of data, but this has to be replaced
+    # with a real data structure (some btree or a skiplist)
+
+    def __init__(self, values=None, key=None):
+        self.key = key
+
+        self._data = values or []
+
+    def append(self, value):
+        self._data.append(value)
+        self._data.sort(key=self.key)
+
+    def __iter__(self):
+        return iter(self._data)
+
+    def __getitem__(self, item):
+        return self._data[item]
+
+    def __len__(self):
+        return len(self._data)
 
 
 class ReservoirBase(object):
@@ -129,6 +158,10 @@ class UniformReservoir(ReservoirBase):
 
 
 class SlidingWindowReservoir(ReservoirBase):
+    """
+    A simple sliding-window reservoir that keeps the last N values
+    """
+
     def __init__(self, size=DEFAULT_UNIFORM_RESERVOIR_SIZE):
         self.size = size
         self.deque = collections.deque(maxlen=self.size)
@@ -146,6 +179,62 @@ class SlidingWindowReservoir(ReservoirBase):
 
     def __repr__(self):
         return "{}({})".format(type(self).__name__, self.size)
+
+
+class SlidingTimeWindowReservoir(ReservoirBase):
+    """
+    A time-sliced reservoir that keeps the values added in the last N seconds
+    """
+
+    def __init__(self, window_size=DEFAULT_TIME_WINDOW_SIZE):
+        """
+        Build a new sliding time-window reservoir
+        window_size is the time window size in seconds
+        """
+        self.window_size = window_size
+        self.lock = threading.Lock()
+        self.key = operator.itemgetter(0)
+        self._values = SortedList(key=self.key)
+
+    def _do_add(self, value):
+        now = time.time()
+
+        with self.lock:
+            self.tick(now)
+
+        self._values.append((now, value))
+
+    def tick(self, now):
+        target = now - self.window_size
+
+        # the values are sorted by the first element (timestamp), so let's perform a dichotomic search
+        first = 0
+        last = len(self._values)
+
+        while first < last:
+            middle = (first+last)//2
+            if self._values[middle][0] < target:
+                first = middle+1
+            else:
+                last = middle
+
+        # older values found, discard them
+        if first:
+            self._values = SortedList(self._values[first:], key=self.key)
+
+    def _get_values(self):
+        now = time.time()
+
+        with self.lock:
+            self.tick(now)
+
+        return [y for x, y in self._values]
+
+    def _same_parameters(self, other):
+        return self.window_size == other.window_size
+
+    def __repr__(self):
+        return "{}({})".format(type(self).__name__, self.window_size)
 
 
 class Histogram(object):

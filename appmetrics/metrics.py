@@ -277,6 +277,7 @@ def metrics_by_tag(tag_name):
 RESERVOIR_TYPES = {
     'uniform': histogram.UniformReservoir,
     'sliding_window': histogram.SlidingWindowReservoir,
+    'sliding_time_window': histogram.SlidingTimeWindowReservoir,
 }
 
 

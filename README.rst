@@ -168,11 +168,20 @@ probability distribution, ensuring that the sample is always statistically repre
 This kind of reservoir must be used when you are interested in statistics over the whole stream of
 observations. Use ``"uniform"`` as ``reservoir_type`` in ``with_histogram``.
 
+
 Sliding window reservoir
 ........................
 
 This *reservoir* keeps a fixed number of observations (default 1028) and when a new value comes in the first
-one is discarded. Its ``reservoir_type`` is ``sliding_window``.
+one is discarded. The statistics are representative of the last N observations. Its ``reservoir_type``
+is ``sliding_window``.
+
+Sliding time window reservoir
+.............................
+This *reservoir* keeps observation for a fixed amount of time (default 60 seconds), older values get discarded.
+The statistics are representative of the last N seconds, but if you have a lot of readings in N seconds this could
+eat a lot amount of memory. Its ``reservoir_type`` is ``sliding_time_window``.
+
 
 
 Meters

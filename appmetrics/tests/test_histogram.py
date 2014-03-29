@@ -1,4 +1,5 @@
 import random
+import operator
 
 from nose.tools import assert_equal, raises, assert_almost_equal, assert_true, assert_false
 import mock
@@ -13,6 +14,55 @@ def test_uniform_reservoir_defaults():
     assert_equal(ur.values, [])
     assert_equal(ur.sorted_values, [])
     assert_equal(ur.count, 0)
+
+
+class TestSortedList(object):
+    def setUp(self):
+        self.sl = mm.SortedList()
+
+    def test_append(self):
+        self.sl.append(1)
+        self.sl.append(2)
+        self.sl.append(0)
+
+        assert_equal(self.sl._data, [0, 1, 2])
+
+    def test_default_key(self):
+        self.sl.append((0, 2, 1))
+        self.sl.append((1, 1, 1))
+        self.sl.append((2, 3, 1))
+
+        assert_equal(self.sl._data, [(0, 2, 1), (1, 1, 1), (2, 3, 1)])
+
+    def test_key(self):
+        self.sl.key = operator.itemgetter(1)
+
+        self.sl.append((0, 2, 1))
+        self.sl.append((1, 1, 1))
+        self.sl.append((2, 3, 1))
+
+        assert_equal(self.sl._data, [(1, 1, 1), (0, 2, 1), (2, 3, 1)])
+
+    def test_init(self):
+        sl = mm.SortedList([1, 2, 3], key=mock.sentinel)
+        assert_equal(sl._data, [1, 2, 3])
+        assert_equal(sl.key, mock.sentinel)
+
+    def test_iter(self):
+        self.sl.append(1)
+        self.sl.append(2)
+        self.sl.append(0)
+
+        assert_equal(list(self.sl), [0, 1, 2])
+
+    def test_slice(self):
+        self.sl.append(1)
+        self.sl.append(2)
+        self.sl.append(0)
+
+        assert_equal(self.sl[:2], [0, 1])
+        assert_equal(self.sl[1:], [1, 2])
+        assert_equal(self.sl[0:1], [0])
 
 
 class TestUniformReservoir(object):
@@ -161,6 +211,91 @@ class TestSlidingWindowReservoir(object):
     def test_same_kind_with_different_parameters(self):
         other = mm.SlidingWindowReservoir(10)
         assert_false(self.swr.same_kind(other))
+
+
+class TestSlidingTimeWindowReservoir(object):
+    def setUp(self):
+        self.patch = mock.patch('appmetrics.histogram.time.time')
+        self.time = self.patch.start()
+
+        self.window_size = 3 # seconds
+        self.rr = mm.SlidingTimeWindowReservoir(self.window_size)
+
+    def tearDown(self):
+        self.patch.stop()
+
+    @raises(TypeError)
+    def test_add_bad_type(self):
+        self.rr.add(None)
+
+    def test_add(self):
+        self.time.return_value = 1.0
+
+        for i in range(10):
+            self.rr.add(i)
+
+        assert_equal(list(self.rr._values), [(1.0, float(x)) for x in range(10)])
+
+    def test_add_exceeded_time(self):
+        self.time.return_value = 1
+        self.rr.add(1)
+
+        assert_equal(list(self.rr._values), [(1, 1)])
+
+        self.time.return_value = 1.1
+        self.rr.add(2)
+        assert_equal(list(self.rr._values), [(1, 1), (1.1, 2)])
+
+        self.time.return_value = 1.2
+        self.rr.add(3)
+        assert_equal(list(self.rr._values), [(1, 1), (1.1, 2), (1.2, 3)])
+
+        self.time.return_value = 1.3
+        self.rr.add(4)
+        assert_equal(list(self.rr._values), [(1, 1), (1.1, 2), (1.2, 3), (1.3, 4)])
+
+        self.time.return_value = 3.1
+        self.rr.add(5)
+        assert_equal(list(self.rr._values), [(1, 1), (1.1, 2), (1.2, 3), (1.3, 4), (3.1, 5)])
+
+        self.time.return_value = 4.05
+        self.rr.add(6)
+        assert_equal(list(self.rr._values), [(1.1, 2), (1.2, 3), (1.3, 4), (3.1, 5), (4.05, 6)])
+
+        self.time.return_value = 4.1
+        self.rr.add(7)
+        assert_equal(list(self.rr._values), [(1.1, 2), (1.2, 3), (1.3, 4), (3.1, 5), (4.05, 6), (4.1, 7)])
+
+        self.time.return_value = 4.2
+        self.rr.add(8)
+        assert_equal(list(self.rr._values), [(1.3, 4), (3.1, 5), (4.05, 6), (4.1, 7), (4.2, 8)])
+
+    def test_values(self):
+        self.rr._values = [(1, 10), (1.5, 1.5), (2, 2), (3, 3)]
+        self.time.return_value = 3.0
+        assert_equal(self.rr.values, [10, 1.5, 2, 3])
+
+    def test_values_exceeded_time(self):
+        self.rr._values = [(1, 10), (2, 2), (3, 1), (4, 4)]
+        self.time.return_value = 4.0001
+        assert_equal(self.rr.values, [2, 1, 4])
+
+    def test_sorted_values(self):
+        self.rr._values = [(1, 10), (2, 2), (3, 1), (4, 4)]
+        self.time.return_value = 4.0001
+        assert_equal(self.rr.sorted_values, [1, 2, 4])
+
+    def test_same_kind(self):
+        other = mm.SlidingTimeWindowReservoir(self.rr.window_size)
+        assert_true(self.rr.same_kind(other))
+
+    def test_same_kind_with_different_class(self):
+        other = mm.UniformReservoir(self.rr.window_size)
+        assert_false(self.rr.same_kind(other))
+
+    def test_same_kind_with_different_parameters(self):
+        other = mm.SlidingTimeWindowReservoir(10)
+        assert_false(self.rr.same_kind(other))
 
 
 class TestHistogram(object):
