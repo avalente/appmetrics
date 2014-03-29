@@ -659,6 +659,8 @@ def skewness(data):
         ...
     StatisticsError: skewness requires at least one data point
 
+    >>> skewness([1.0, 1.0, 1.0])
+    0.0
     """
 
     if not data:
@@ -666,6 +668,10 @@ def skewness(data):
 
     size = len(data)
     sd = stdev(data) ** 3
+
+    if not sd:
+        return 0.0
+
     mn = mean(data)
     return sum(map(lambda x: ((x - mn) ** 3 / sd), data)) / size
 
@@ -687,6 +693,9 @@ def kurtosis(data):
         ...
     StatisticsError: kurtosis requires at least one data point
 
+    >>> kurtosis([1.0, 1.0, 1.0])
+    0.0
+
     """
 
     if not data:
@@ -694,6 +703,10 @@ def kurtosis(data):
 
     size = len(data)
     sd = stdev(data) ** 4
+
+    if not sd:
+        return 0.0
+
     mn = mean(data)
     return sum(map(lambda x: ((x - mn) ** 4 / sd), data)) / size - 3
 
