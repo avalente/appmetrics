@@ -20,38 +20,31 @@ import threading
 import abc
 import time
 import operator
+import math
 
 from . import statistics, exceptions
 
 
 DEFAULT_UNIFORM_RESERVOIR_SIZE = 1028
 DEFAULT_TIME_WINDOW_SIZE = 60
+DEFAULT_EXPONENTIAL_DECAY_FACTOR = 0.015
 
 
-class SortedList(object):
+def search_greater(values, target):
     """
-    A data structure which keeps the data sorted
+    Return the first index for which target is greater or equal to the first item of the tuple found in values
     """
-    #TODO: this approach works quite well with small amounts of data, but this has to be replaced
-    # with a real data structure (some btree or a skiplist)
+    first = 0
+    last = len(values)
 
-    def __init__(self, values=None, key=None):
-        self.key = key
+    while first < last:
+        middle = (first+last)//2
+        if values[middle][0] < target:
+            first = middle+1
+        else:
+            last = middle
 
-        self._data = values or []
-
-    def append(self, value):
-        self._data.append(value)
-        self._data.sort(key=self.key)
-
-    def __iter__(self):
-        return iter(self._data)
-
-    def __getitem__(self, item):
-        return self._data[item]
-
-    def __len__(self):
-        return len(self._data)
+    return first
 
 
 class ReservoirBase(object):
@@ -141,14 +134,12 @@ class UniformReservoir(ReservoirBase):
                     self._values[k] = value
                     changed = True
 
-        self.count += 1
+            self.count += 1
 
         return changed
 
     def _get_values(self):
-        if self.count < self.size:
-            return self._values[:self.count]
-        return self._values
+        return self._values[:min(self.count, self.size)]
 
     def _same_parameters(self, other):
         return self.size == other.size
@@ -194,7 +185,7 @@ class SlidingTimeWindowReservoir(ReservoirBase):
         self.window_size = window_size
         self.lock = threading.Lock()
         self.key = operator.itemgetter(0)
-        self._values = SortedList(key=self.key)
+        self._values = []
 
     def _do_add(self, value):
         now = time.time()
@@ -208,19 +199,11 @@ class SlidingTimeWindowReservoir(ReservoirBase):
         target = now - self.window_size
 
         # the values are sorted by the first element (timestamp), so let's perform a dichotomic search
-        first = 0
-        last = len(self._values)
-
-        while first < last:
-            middle = (first+last)//2
-            if self._values[middle][0] < target:
-                first = middle+1
-            else:
-                last = middle
+        idx = search_greater(self._values, target)
 
         # older values found, discard them
-        if first:
-            self._values = SortedList(self._values[first:], key=self.key)
+        if idx:
+            self._values = self._values[idx:]
 
     def _get_values(self):
         now = time.time()
@@ -235,6 +218,107 @@ class SlidingTimeWindowReservoir(ReservoirBase):
 
     def __repr__(self):
         return "{}({})".format(type(self).__name__, self.window_size)
+
+
+class ExponentialDecayingReservoir(ReservoirBase):
+    """
+    An exponential-weighted reservoir which exponentially decays older values
+    in order to give greater significance to newer ones.
+    See http://dimacs.rutgers.edu/~graham/pubs/papers/fwddecay.pdf
+    """
+
+    #TODO: replace the sort()s with a proper data structure (btree/skiplist). However, since the list
+    # is keep sorted (and it should be very small), the sort() shouldn't dramatically slow down
+    # the insertions, also considering that the search can be log(n) in that way
+
+    RESCALE_THRESHOLD = 3600
+    EPSILON = 1e-12
+
+    def __init__(self, size=DEFAULT_UNIFORM_RESERVOIR_SIZE, alpha=DEFAULT_EXPONENTIAL_DECAY_FACTOR):
+        self.size = size
+        self.alpha = alpha
+        self.start_time = time.time()
+        self.lock = threading.Lock()
+        self.count = 0
+        self.next_scale_time = self.start_time + self.RESCALE_THRESHOLD
+        self.key = operator.itemgetter(0)
+
+        self._values = []
+
+    def _lookup(self, timestamp):
+        """
+        Return the index of the value associated with "timestamp" if any, else None.
+        Since the timestamps are floating-point values, they are considered equal if their absolute
+        difference is smaller than self.EPSILON
+        """
+
+        idx = search_greater(self._values, timestamp)
+        if idx < len(self._values) and math.fabs(self._values[idx][0] - timestamp) < self.EPSILON:
+            return idx
+        return None
+
+    def _put(self, timestamp, value):
+        """Replace the value associated with "timestamp" or add the new value"""
+
+        idx = self._lookup(timestamp)
+        if idx is not None:
+            self._values[idx] = (timestamp, value)
+        else:
+            self._values.append((timestamp, value))
+
+    def _do_add(self, value):
+        now = time.time()
+
+        self.rescale(now)
+
+        rnd = random.random()
+        weighted_time = self.weight(now-self.start_time) / rnd
+
+        changed = False
+
+        with self.lock:
+            if self.count < self.size:
+                self._put(weighted_time, value)
+                self._values.sort(key=self.key)
+                changed = True
+            else:
+                first = self._values[0][0]
+                if first < weighted_time:
+                    idx = self._lookup(weighted_time)
+                    if idx is None:
+                        self._values[0] = (weighted_time, value)
+                        self._values.sort(key=self.key)
+                        changed = True
+
+            self.count += 1
+
+        return changed
+
+    def weight(self, t):
+        return math.exp(self.alpha * t)
+
+    def rescale(self, now):
+        with self.lock:
+            if now > self.next_scale_time:
+                original_values = self._values[:]
+                self._values = []
+                for i, (k, v) in enumerate(original_values):
+                    k *= math.exp(-self.alpha * (now-self.start_time))
+                    self._put(k, v)
+
+                self.count = len(self._values)
+                self.start_time = now
+                self.next_scale_time = self.start_time + self.RESCALE_THRESHOLD
+
+
+    def _get_values(self):
+        return [y for x, y in self._values[:max(self.count, self.size)]]
+
+    def _same_parameters(self, other):
+        return self.size == other.size and self.alpha == other.alpha
+
+    def __repr__(self):
+        return "{}({}, {})".format(type(self).__name__, self.size, self.alpha)
 
 
 class Histogram(object):

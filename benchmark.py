@@ -2,7 +2,7 @@ import time
 import logging
 import random
 
-from appmetrics import metrics
+from appmetrics import metrics, histogram
 
 log = logging.getLogger("benchmark")
 
@@ -68,6 +68,18 @@ def run(kind, new_fun, duration):
 def benchmark_all():
     run("counter", metrics.new_counter, DURATION)
     run("histogram", metrics.new_histogram, DURATION)
+    run(
+        "histogram-sliding time window",
+        lambda name: metrics.new_histogram(name, histogram.SlidingTimeWindowReservoir(5)),
+        DURATION)
+    run(
+        "histogram-sliding window",
+        lambda name: metrics.new_histogram(name, histogram.SlidingWindowReservoir()),
+        DURATION)
+    run(
+        "histogram-exponentially decaying",
+        lambda name: metrics.new_histogram(name, histogram.ExponentialDecayingReservoir()),
+        DURATION)
     run("meter", metrics.new_meter, DURATION)
 
 

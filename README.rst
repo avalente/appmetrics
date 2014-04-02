@@ -178,10 +178,19 @@ is ``sliding_window``.
 
 Sliding time window reservoir
 .............................
+
 This *reservoir* keeps observation for a fixed amount of time (default 60 seconds), older values get discarded.
 The statistics are representative of the last N seconds, but if you have a lot of readings in N seconds this could
 eat a lot amount of memory. Its ``reservoir_type`` is ``sliding_time_window``.
 
+Exponentially-decaying reservoir
+................................
+
+This *reservoir* keeps a fixed number of values (default 1028), with
+`exponential decaying <http://dimacs.rutgers.edu/~graham/pubs/papers/fwddecay.pdf>`_ of older values
+in order to give greater significance to recent data. The bias towards newer values can be adjusted by
+specifying a proper `alpha` value to the reservoir's init (defaults to 0.015).
+Its ``reservoir_type`` is ``exp_decaying``.
 
 
 Meters

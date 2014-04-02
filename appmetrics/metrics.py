@@ -278,6 +278,7 @@ RESERVOIR_TYPES = {
     'uniform': histogram.UniformReservoir,
     'sliding_window': histogram.SlidingWindowReservoir,
     'sliding_time_window': histogram.SlidingTimeWindowReservoir,
+    'exp_decaying': histogram.ExponentialDecayingReservoir,
 }
 
 

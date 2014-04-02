@@ -1,7 +1,6 @@
 import random
-import operator
 
-from nose.tools import assert_equal, raises, assert_almost_equal, assert_true, assert_false
+from nose.tools import assert_equal, raises, assert_almost_equal, assert_true, assert_false, assert_items_equal
 import mock
 
 from .. import histogram as mm
@@ -16,53 +15,21 @@ def test_uniform_reservoir_defaults():
     assert_equal(ur.count, 0)
 
 
-class TestSortedList(object):
-    def setUp(self):
-        self.sl = mm.SortedList()
+def test_search_greater():
+    values = [(1, "a"), (2, "b"), (3, "c"), (4, "d"), (5, "e")]
 
-    def test_append(self):
-        self.sl.append(1)
-        self.sl.append(2)
-        self.sl.append(0)
+    tests = [
+        (0, 0),
+        (1, 0),
+        (1.5, 1),
+        (2, 1),
+        (4.5, 4),
+        (5, 4),
+        (6, 5)]
 
-        assert_equal(self.sl._data, [0, 1, 2])
-
-    def test_default_key(self):
-        self.sl.append((0, 2, 1))
-        self.sl.append((1, 1, 1))
-        self.sl.append((2, 3, 1))
-
-        assert_equal(self.sl._data, [(0, 2, 1), (1, 1, 1), (2, 3, 1)])
-
-    def test_key(self):
-        self.sl.key = operator.itemgetter(1)
-
-        self.sl.append((0, 2, 1))
-        self.sl.append((1, 1, 1))
-        self.sl.append((2, 3, 1))
-
-        assert_equal(self.sl._data, [(1, 1, 1), (0, 2, 1), (2, 3, 1)])
-
-    def test_init(self):
-        sl = mm.SortedList([1, 2, 3], key=mock.sentinel)
-        assert_equal(sl._data, [1, 2, 3])
-        assert_equal(sl.key, mock.sentinel)
-
-    def test_iter(self):
-        self.sl.append(1)
-        self.sl.append(2)
-        self.sl.append(0)
-
-        assert_equal(list(self.sl), [0, 1, 2])
-
-    def test_slice(self):
-        self.sl.append(1)
-        self.sl.append(2)
-        self.sl.append(0)
-
-        assert_equal(self.sl[:2], [0, 1])
-        assert_equal(self.sl[1:], [1, 2])
-        assert_equal(self.sl[0:1], [0])
+    for target, expected in tests:
+        f = lambda target, expected: assert_equal(expected, mm.search_greater(values, target))
+        yield f, target, expected
 
 
 class TestUniformReservoir(object):
@@ -270,6 +237,10 @@ class TestSlidingTimeWindowReservoir(object):
         self.rr.add(8)
         assert_equal(list(self.rr._values), [(1.3, 4), (3.1, 5), (4.05, 6), (4.1, 7), (4.2, 8)])
 
+        self.time.return_value = 10
+        self.rr.add(9)
+        assert_equal(list(self.rr._values), [(10, 9)])
+
     def test_values(self):
         self.rr._values = [(1, 10), (1.5, 1.5), (2, 2), (3, 3)]
         self.time.return_value = 3.0
@@ -295,6 +266,85 @@ class TestSlidingTimeWindowReservoir(object):
 
     def test_same_kind_with_different_parameters(self):
         other = mm.SlidingTimeWindowReservoir(10)
+        assert_false(self.rr.same_kind(other))
+
+
+class TestExponentialDecayingReservoir(object):
+    def setUp(self):
+        self.patch = mock.patch('appmetrics.histogram.time.time', mock.Mock(return_value=0))
+        self.time = self.patch.start()
+
+        self.state = random.getstate()
+        random.seed(42)
+
+        self.size = 5
+        self.rr = mm.ExponentialDecayingReservoir(self.size)
+
+    def tearDown(self):
+        self.patch.stop()
+        random.setstate(self.state)
+
+    @raises(TypeError)
+    def test_add_bad_type(self):
+        self.rr.add(None)
+
+    def _add_after(self, value, time):
+        self.time.return_value += time
+        self.rr.add(value)
+        return self.rr.values
+
+    def test_add_first(self):
+        assert_equal(self._add_after(1.5, 1), [1.5])
+        assert_equal(self._add_after(2.5, 1), [1.5, 2.5])
+        assert_equal(self._add_after(3.5, 1), [1.5, 3.5, 2.5])
+        assert_equal(self._add_after(4.5, 1), [1.5, 3.5, 4.5, 2.5])
+        assert_equal(self._add_after(5.5, 1), [5.5, 1.5, 3.5, 4.5, 2.5])
+
+    def test_add_overflow(self):
+        for i in range(1, 6):
+            self._add_after(0.5+i, 1)
+
+        assert_equal(self._add_after(10, 1), [1.5, 10.0, 3.5, 4.5, 2.5])
+        assert_equal(self._add_after(20, 1), [1.5, 10.0, 3.5, 4.5, 2.5])
+        assert_equal(self._add_after(30, 1), [10.0, 3.5, 4.5, 30.0,  2.5])
+
+    def test_rescaling(self):
+        for i in range(1, 6):
+            self._add_after(0.5+i, 1)
+
+        # this should trigger a rescaling, so all the old values will have very small times
+        # and all the new ones will be inserted
+        self._add_after(10, 3600.0)
+        for i in range(1, 5):
+            self._add_after(10+i, 1)
+
+        assert_items_equal(self.rr.values, [10, 11, 12, 13, 14])
+
+    def test_long_delay(self):
+        for i in range(1, 6):
+            self._add_after(0.5+i, 1)
+
+        # this emulates a new value after 15 hours: in that case the times are too small and collapse to zero
+        assert_equal(self._add_after(10, 3600.0*15), [2.5, 10.0])
+
+    def test_sorted_values(self):
+        self.rr._values = [(1, 10), (2, 2), (3, 1), (4, 4)]
+        assert_equal(self.rr.sorted_values, [1, 2, 4, 10])
+
+    def test_same_kind(self):
+        other = mm.ExponentialDecayingReservoir(self.rr.size)
+        assert_true(self.rr.same_kind(other))
+
+    def test_same_kind_with_different_class(self):
+        other = mm.UniformReservoir(self.rr.size)
+        assert_false(self.rr.same_kind(other))
+
+    def test_same_kind_with_different_parameters(self):
+        other = mm.ExponentialDecayingReservoir(10)
+        assert_false(self.rr.same_kind(other))
+
+    def test_same_kind_with_different_parameters_2(self):
+        other = mm.ExponentialDecayingReservoir(self.rr.size, 1)
         assert_false(self.rr.same_kind(other))
 
 
