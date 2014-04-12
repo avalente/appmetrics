@@ -21,7 +21,6 @@ Main interface module
 import functools
 import threading
 import time
-import warnings
 
 from .exceptions import DuplicateMetricError, InvalidMetricError
 from . import histogram, simple_metrics, meter
@@ -262,6 +261,13 @@ def metrics_by_tag(tag_name):
     except KeyError:
         return {}
 
+    return metrics_by_name_list(names)
+
+
+def metrics_by_name_list(names):
+    """
+    Return a dictionary with {metric name: metric value} for all the metrics with the given names.
+    """
     results = {}
 
     for name in names:

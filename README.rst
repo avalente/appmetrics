@@ -19,11 +19,18 @@ The library's purpose is to help you collect real-time metrics from your Python 
 being them web apps, long-running batches or whatever. ``AppMetrics`` is not a persistent store,
 you must provide your own persistence layer, maybe by using well established monitoring tools.
 
-Usage
------
+Getting started
+---------------
 
-Once you have installed ``AppMetrics`` package in your python environment
-(a ``pip install appmetrics`` is usually enough), you can access it by the ``metrics`` module::
+Install ``AppMetrics`` into your python environment::
+
+    pip install appmetrics
+
+or, if you don't use ``pip``, download and unpack the package an then::
+
+    python setup.py install
+
+Once you have installed ``AppMetrics`` you can access it by the ``metrics`` module::
 
     >>> from appmetrics import metrics
     >>> histogram = metrics.new_histogram("test")
@@ -34,7 +41,7 @@ Once you have installed ``AppMetrics`` package in your python environment
     >>> histogram.notify(3.0)
     True
     >>> histogram.get()
-    {'arithmetic_mean': 2.0, 'skewness': 0.0, 'harmonic_mean': 1.6363636363636365, 'min': 1.0, 'standard_deviation': 1.0, 'median': 2.0, 'histogram': [(3.0, 3), (5.0, 0)], 'percentile': [(50, 2.0), (75, 2.0), (90, 3.0), (95, 3.0), (99, 3.0), (99.9, 3.0)], 'n': 3, 'max': 3.0, 'variance': 1.0, 'geometric_mean': 1.8171205928321397, 'kurtosis': -2.3333333333333335}
+    {'arithmetic_mean': 2.0, 'kind': 'histogram', 'skewness': 0.0, 'harmonic_mean': 1.6363636363636365, 'min': 1.0, 'standard_deviation': 1.0, 'median': 2.0, 'histogram': [(3.0, 3), (5.0, 0)], 'percentile': [(50, 2.0), (75, 2.0), (90, 3.0), (95, 3.0), (99, 3.0), (99.9, 3.0)], 'n': 3, 'max': 3.0, 'variance': 1.0, 'geometric_mean': 1.8171205928321397, 'kurtosis': -2.3333333333333335}
 
 Basically you create a new metric by using one of the ``metrics.new_*`` functions. The metric will be stored into
 an internal registry, so you can access it in different places in your application::
@@ -44,6 +51,38 @@ an internal registry, so you can access it in different places in your applicati
     True
 
 The ``metrics`` registry is thread-safe, you can safely use it in multi-threaded web servers.
+
+Now let's decorate some function::
+
+    >>> import time, random
+    >>> @metrics.with_histogram("test")
+    ... def my_worker():
+    ...     time.sleep(random.random())
+    ...
+    >>> my_worker()
+    >>> my_worker()
+    >>> my_worker()
+
+and let's see the results::
+
+    >>> metrics.get("test")
+    {'arithmetic_mean': 0.41326093673706055, 'kind': 'histogram', 'skewness': 0.2739718270714368, 'harmonic_mean': 0.14326954591313346, 'min': 0.0613858699798584, 'standard_deviation': 0.4319169569113129, 'median': 0.2831099033355713, 'histogram': [(1.0613858699798584, 3), (2.0613858699798584, 0)], 'percentile': [(50, 0.2831099033355713), (75, 0.2831099033355713), (90, 0.895287036895752), (95, 0.895287036895752), (99, 0.895287036895752), (99.9, 0.895287036895752)], 'n': 3, 'max': 0.895287036895752, 'variance': 0.18655225766752892, 'geometric_mean': 0.24964828731906127, 'kurtosis': -2.3333333333333335}
+
+Let's print the metrics data on the screen every 5 seconds::
+
+    >>> from appmetrics import reporter
+    >>> def stdout_report(metrics):
+    ...     print metrics
+    ...
+    >>> reporter.register(stdout_report, reporter.fixed_interval_scheduler(5))
+    '5680173c-0279-46ec-bd88-b318f8058ef4'
+    >>> {'test': {'arithmetic_mean': 0.0, 'kind': 'histogram', 'skewness': 0.0, 'harmonic_mean': 0.0, 'min': 0, 'standard_deviation': 0.0, 'median': 0.0, 'histogram': [(0, 0)], 'percentile': [(50, 0.0), (75, 0.0), (90, 0.0), (95, 0.0), (99, 0.0), (99.9, 0.0)], 'n': 0, 'max': 0, 'variance': 0.0, 'geometric_mean': 0.0, 'kurtosis': 0.0}}
+    >>> my_worker()
+    >>> my_worker()
+    >>> {'test': {'arithmetic_mean': 0.5028266906738281, 'kind': 'histogram', 'skewness': 0.0, 'harmonic_mean': 0.2534044030939462, 'min': 0.14868521690368652, 'standard_deviation': 0.50083167520453, 'median': 0.5028266906738281, 'histogram': [(1.1486852169036865, 2), (2.1486852169036865, 0)], 'percentile': [(50, 0.14868521690368652), (75, 0.8569681644439697), (90, 0.8569681644439697), (95, 0.8569681644439697), (99, 0.8569681644439697), (99.9, 0.8569681644439697)], 'n': 2, 'max': 0.8569681644439697, 'variance': 0.2508323668881758, 'geometric_mean': 0.35695727672917066, 'kurtosis': -2.75}}
+    >>> reporter.remove('5680173c-0279-46ec-bd88-b318f8058ef4')
+    <Timer(Thread-1, started daemon 4555313152)>
+
 
 
 Decorators
@@ -66,7 +105,8 @@ API
  * ``raw_data()``      - get the raw data stored in the metrics
 
 However, the ``notify`` input type and the ``get()`` and ``raw_data()`` data format depend on the kind
-of metric chosen.
+of metric chosen. Please notice that ``get()`` returns a dictionary with the mandatory
+field ``kind`` which depends on the metric's type.
 
 Metrics
 -------
@@ -85,7 +125,7 @@ a ``TypeError`` or a ``ValueError`` may be raised::
     >>> counter.notify(10)
     >>> counter.notify(-5)
     >>> counter.get()
-    5
+    {'kind': 'counter', 'value': 5}
     >>> counter.notify("wrong")
     Traceback (most recent call last):
       File "<stdin>", line 1, in <module>
@@ -101,7 +141,7 @@ Gauges are point-in-time single value metrics. The ``notify`` method accepts any
     >>> gauge = metrics.new_gauge("gauge_test")
     >>> gauge.notify("version 1.0")
     >>> gauge.get()
-    'version 1.0'
+    {'kind': 'gauge', 'value': 'version 1.0'}
 
 The ``gauge`` metric is useful to expose almost-static values such as configuration parameters, constants and so on.
 Although you can use any python data type as the value, you won't be able to use the ``wsgi`` middleware unless
@@ -205,7 +245,7 @@ intervals::
     >>> meter.notify(1)
     >>> meter.notify(3)
     >>> meter.get()
-    {'count': 5, 'five': 0.01652854617838251, 'mean': 0.34341050858242983, 'fifteen': 0.005540151995103271, 'day': 5.7868695912732804e-05, 'one': 0.07995558537067671}
+    {'count': 5, 'kind': 'meter', 'five': 0.0066114184713530035, 'mean': 0.27743058841197027, 'fifteen': 0.0022160607980413085, 'day': 2.3147478365093123e-05, 'one': 0.031982234148270686}
 
 The return values of the ``get`` method are the following:
 
@@ -217,6 +257,7 @@ The return values of the ``get`` method are the following:
  * ``five``: five-minutes *EWMA*
  * ``fifteen``: fifteen-minutes *EWMA*
  * ``day``: last day *EWMA*
+ * ``kind``: "meter"
 
 Notice that the ``notify`` method tries to cast the input value to an integer, so a ``TypeError`` or a ``ValueError``
 may be raised.
@@ -324,6 +365,44 @@ A standalone ``AppMetrics`` webapp can be started by using ``werkzeug``'s develo
     * Running on http://127.0.0.1:5000/
 
 The standalone app mounts on the root (no ``_app-metrics`` prefix). DON'T use it for production purposes!!!
+
+Reporting
+---------
+
+``AppMetrics`` provides another easy way to get your application's metrics: the ``reporter`` module. It allows
+to register any number of callbacks that will be called at scheduled times with the metrics, allowing you
+to "export" your application's metrics into your favourite storage system.
+The main entry point for the ``reporter`` feature is ``reporter.register``::
+
+    reporter.register(callback, schedule, tag=None)
+
+where:
+
+ * *callback* must be a callback function that will be called with a dictionary of ``{metric name: metric values}``
+ * *schedule* must be an iterable object yielding a future timestamp (in ``time.time()`` format) at each iteration
+ * *tag* must be a tag to narrow the involved metrics to the ones with that tag, if ``None`` all the
+   available metrics will be used.
+
+When a callback is registered, a new thread will be started, waiting for the next scheduled call. Please notice
+that the callback will be executed in a thread. ``register`` returns an opaque id identifying the registration.
+
+A callback registration can be removed by calling ``reporter.remove`` with the id returned by ``register``.
+
+``reporter`` provides a simple scheduler object, ``fixed_interval_scheduler``::
+
+    >>> sched = reporter.fixed_interval_scheduler(10)
+    >>> sched.next()
+    1397297405.672592
+    >>> sched.next()
+    1397297415.672592
+    >>> sched.next()
+    1397297425.672592
+
+CSV reporter
+************
+
+A simple reporter callback is exposed by ``reporter.CSVReporter``. As the name suggests, it will create
+csv reports with metric values, a file for each metric, a row for each call. See ``examples/csv_reporter.py``
 
 
 Testing

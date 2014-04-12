@@ -100,6 +100,7 @@ class TestMeter(object):
         self.meter.tick = mock.Mock()
 
         expected = dict(
+            kind="meter",
             count=0,
             mean=0.0,
             one=0.0,

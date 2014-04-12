@@ -23,7 +23,7 @@ class TestCounter(object):
 
     def test_get(self):
         self.obj.value = 3
-        assert_equal(self.obj.get(), 3)
+        assert_equal(self.obj.get(), dict(kind="counter", value=3))
 
     def test_raw_data(self):
         self.obj.value = 3
@@ -44,7 +44,7 @@ class TestGauge(object):
 
     def test_get(self):
         self.obj.value = "test"
-        assert_equal(self.obj.get(), "test")
+        assert_equal(self.obj.get(), dict(kind="gauge", value="test"))
 
     def test_raw_data(self):
         self.obj.value = "test"

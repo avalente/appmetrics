@@ -422,3 +422,11 @@ class TestMetricsModule(object):
 
         assert_equal(mm.metrics_by_tag("1"), {"test1": m1.get(), "test3": m3.get()})
 
+    def test_metrics_by_name_list(self):
+        mm.REGISTRY = dict(test1=mock.Mock(), test2=mock.Mock(), test3=mock.Mock())
+        out = mm.metrics_by_name_list(["test1", "test3"])
+        expected = {'test1': mm.REGISTRY["test1"].get.return_value,
+                    'test3': mm.REGISTRY["test3"].get.return_value}
+
+        assert_equal(out, expected)
+

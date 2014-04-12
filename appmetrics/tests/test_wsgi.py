@@ -309,5 +309,5 @@ class TestWSGIHandlers(object):
         res = wsgi.handle_metric_update(req(dict(value=1.5)), "test")
         assert_equal(res, "")
 
-        assert_equal(metric.get(), 1.5)
+        assert_equal(metric.get(), dict(kind="gauge", value=1.5))
 

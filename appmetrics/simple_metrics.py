@@ -46,7 +46,7 @@ class Counter(object):
         """
         Return the counter's value
         """
-        return self.value
+        return dict(kind="counter", value=self.value)
 
     def raw_data(self):
         """
@@ -78,7 +78,7 @@ class Gauge(object):
         Return the gauge's current value
         """
 
-        return self.value
+        return dict(kind="gauge", value=self.value)
 
     def raw_data(self):
         return self.value

@@ -357,6 +357,7 @@ class Histogram(object):
             histogram = [(0, 0)]
 
         res = dict(
+            kind="histogram",
             min=values[0] if values else 0,
             max=values[-1] if values else 0,
             arithmetic_mean=safe(statistics.mean),

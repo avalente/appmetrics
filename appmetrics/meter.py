@@ -164,6 +164,7 @@ class Meter(object):
             self.tick()
 
             data = dict(
+                kind="meter",
                 count=self.count,
                 mean=self.count / (time.time() - self.started_on),
                 one=self.m1.rate,

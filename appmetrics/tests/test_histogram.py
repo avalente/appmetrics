@@ -369,6 +369,7 @@ class TestHistogram(object):
         self.reservoir.sorted_values = []
 
         expected = dict(
+            kind="histogram",
             min=0,
             max=0,
             arithmetic_mean=0.0,
@@ -390,6 +391,8 @@ class TestHistogram(object):
         self.reservoir.sorted_values = [1.5, 2.5, 2.5, 2.75, 3.25, 3.26, 4.75]
 
         res = self.histogram.get()
+
+        assert_equal(res['kind'], "histogram")
 
         assert_almost_equal(res['min'], 1.5)
         assert_almost_equal(res['max'], 4.75)
