@@ -27,7 +27,7 @@ import threading
 import time
 import atexit
 
-from appmetrics import metrics, exceptions
+from . import metrics, py3comp
 
 
 log = logging.getLogger('appmetrics.reporter')
@@ -198,7 +198,7 @@ class CSVReporter(object):
 
         file_name, new = self.file_name(name, kind)
 
-        with open(file_name, "ab") as of:
+        with open(file_name, "a" if py3comp.PY3 else "ab") as of:
             writer = csv.DictWriter(of, self.histogram_header)
 
             # if the file is new, write the header once
@@ -219,7 +219,7 @@ class CSVReporter(object):
 
         file_name, new = self.file_name(name, kind)
 
-        with open(file_name, "ab") as of:
+        with open(file_name, "a" if py3comp.PY3 else "ab") as of:
             writer = csv.DictWriter(of, self.meter_header)
 
             # if the file is new, write the header once
@@ -231,7 +231,7 @@ class CSVReporter(object):
         return file_name
 
     def __call__(self, objects):
-        for name, obj in objects.iteritems():
+        for name, obj in py3comp.iteritems(objects):
             fun = getattr(self, "dump_%s" % obj.get('kind', "unknown"), None)
             if fun:
                 # protect the original object
@@ -240,5 +240,5 @@ class CSVReporter(object):
 
 @atexit.register
 def cleanup():
-    for v in REGISTRY.itervalues():
+    for v in REGISTRY.values():
         v.cancel()

@@ -19,6 +19,8 @@ The library's purpose is to help you collect real-time metrics from your Python 
 being them web apps, long-running batches or whatever. ``AppMetrics`` is not a persistent store,
 you must provide your own persistence layer, maybe by using well established monitoring tools.
 
+``AppMetrics`` works on python 2.7 and 3.3.
+
 Getting started
 ---------------
 
@@ -378,10 +380,10 @@ The main entry point for the ``reporter`` feature is ``reporter.register``::
 
 where:
 
- * *callback* must be a callback function that will be called with a dictionary of ``{metric name: metric values}``
- * *schedule* must be an iterable object yielding a future timestamp (in ``time.time()`` format) at each iteration
- * *tag* must be a tag to narrow the involved metrics to the ones with that tag, if ``None`` all the
-   available metrics will be used.
+* *callback* must be a callback function that will be called with a dictionary of ``{metric name: metric values}``
+* *schedule* must be an iterable object yielding a future timestamp (in ``time.time()`` format) at each iteration
+* *tag* must be a tag to narrow the involved metrics to the ones with that tag, if ``None`` all the
+  available metrics will be used.
 
 When a callback is registered, a new thread will be started, waiting for the next scheduled call. Please notice
 that the callback will be executed in a thread. ``register`` returns an opaque id identifying the registration.

@@ -22,7 +22,7 @@ import time
 import operator
 import math
 
-from . import statistics, exceptions
+from . import statistics, exceptions, py3comp
 
 
 DEFAULT_UNIFORM_RESERVOIR_SIZE = 1028
@@ -129,7 +129,9 @@ class UniformReservoir(ReservoirBase):
                 self._values[self.count] = value
                 changed = True
             else:
-                k = random.randint(0, self.count - 1)
+                # not randint() because it yields different values on python 3, it
+                # would be a nightmare to test.
+                k = int(random.uniform(0, self.count))
                 if k < self.size:
                     self._values[k] = value
                     changed = True
@@ -368,7 +370,7 @@ class Histogram(object):
             standard_deviation=safe(statistics.stdev),
             skewness=safe(statistics.skewness),
             kurtosis=safe(statistics.kurtosis),
-            percentile=zip(plevels, percentiles),
+            percentile=py3comp.zip(plevels, percentiles),
             histogram=histogram,
             n=len(values))
         return res

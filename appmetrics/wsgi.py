@@ -24,7 +24,7 @@ import json
 
 import werkzeug
 
-from . import metrics, exceptions
+from . import metrics, exceptions, py3comp
 
 
 log = logging.getLogger("appmetrics.wsgi")
@@ -124,7 +124,7 @@ def get_body(request):
 
     # get content data
     try:
-        return json.load(request.stream)
+        return py3comp.json_load(request.stream, request.charset)
     except ValueError as e:
         log.debug("Invalid body: %s", e)
         raise werkzeug.exceptions.BadRequest(description="invalid json")

@@ -27,11 +27,13 @@ from __future__ import division
 import collections
 import math
 import operator
+import functools
 
 from fractions import Fraction
 from decimal import Decimal
 
 from .exceptions import StatisticsError
+from .py3comp import xrange, iteritems
 
 
 def isfinite(n):
@@ -39,22 +41,6 @@ def isfinite(n):
     (Note that 0.0 is considered finite.)
 
     Backported from python 3
-
-    >>> isfinite(0.0)
-    True
-
-    >>> isfinite(1.0)
-    True
-
-    >>> isfinite(5)
-    True
-
-    >>> isfinite(float("nan"))
-    False
-
-    >>> isfinite(float("inf"))
-    False
-
     """
 
     return not (math.isinf(n) or math.isnan(n))
@@ -66,45 +52,18 @@ def sum(data, start=0):
     Return a high-precision sum of the given numeric data. If optional
     argument ``start`` is given, it is added to the total. If ``data`` is
     empty, ``start`` (defaulting to 0) is returned.
-
-
-    Examples
-    --------
-
-    >>> sum([3, 2.25, 4.5, -0.5, 1.0], 0.75)
-    11.0
-
-    Some sources of round-off error will be avoided:
-
-    >>> sum([1e50, 1, -1e50] * 1000)  # Built-in sum returns zero.
-    1000.0
-
-    Fractions and Decimals are also supported:
-
-    >>> from fractions import Fraction as F
-    >>> sum([F(2, 3), F(7, 5), F(1, 4), F(5, 6)])
-    Fraction(63, 20)
-
-    >>> from decimal import Decimal as D
-    >>> data = [D("0.1375"), D("0.2108"), D("0.3061"), D("0.0419")]
-    >>> sum(data)
-    Decimal('0.6963')
-
-    >>> sum([1, float("nan")])
-    nan
-
     """
-    n, d = _exact_ratio(start)
+    n, d = exact_ratio(start)
     T = type(start)
     partials = {d: n}  # map {denominator: sum of numerators}
     # Micro-optimizations.
-    coerce_types = _coerce_types
-    exact_ratio = _exact_ratio
+    coerce_types_ = coerce_types
+    exact_ratio_ = exact_ratio
     partials_get = partials.get
     # Add numerators for each denominator, and track the "current" type.
     for x in data:
-        T = _coerce_types(T, type(x))
-        n, d = exact_ratio(x)
+        T = coerce_types_(T, type(x))
+        n, d = exact_ratio_(x)
         partials[d] = partials_get(d, 0) + n
     if None in partials:
         assert issubclass(T, (float, Decimal))
@@ -121,19 +80,8 @@ def sum(data, start=0):
     return T(total)
 
 
-def _exact_ratio(x):
+def exact_ratio(x):
     """Convert Real number x exactly to (numerator, denominator) pair.
-
-    >>> _exact_ratio(0.25)
-    (1, 4)
-
-    >>> _exact_ratio(None)
-    Traceback (most recent call last):
-        ...
-    TypeError: can't convert type 'NoneType' to numerator/denominator
-
-    >>> _exact_ratio(float("nan"))
-    (nan, None)
 
     x is expected to be an int, Fraction, Decimal or float.
     """
@@ -148,7 +96,7 @@ def _exact_ratio(x):
             except AttributeError:
                 # Decimal
                 try:
-                    return _decimal_to_ratio(x)
+                    return decimal_to_ratio(x)
                 except AttributeError:
                     msg = "can't convert type '{}' to numerator/denominator"
                     raise TypeError(msg.format(type(x).__name__))
@@ -158,18 +106,8 @@ def _exact_ratio(x):
 
 
 # FIXME This is faster than Fraction.from_decimal, but still too slow.
-def _decimal_to_ratio(d):
+def decimal_to_ratio(d):
     """Convert Decimal d to exact integer ratio (numerator, denominator).
-
-    >>> from decimal import Decimal
-    >>> _decimal_to_ratio(Decimal("2.6"))
-    (26, 10)
-
-    >>> _decimal_to_ratio(Decimal("nan"))
-    Traceback (most recent call last):
-        ...
-    ValueError
-
     """
     sign, digits, exp = d.as_tuple()
     if exp in ('F', 'n', 'N'):  # INF, NAN, sNAN
@@ -184,36 +122,8 @@ def _decimal_to_ratio(d):
     return (num, den)
 
 
-def _coerce_types(T1, T2):
+def coerce_types(T1, T2):
     """Coerce types T1 and T2 to a common type.
-
-    >>> _coerce_types(int, float)
-    <type 'float'>
-
-    >>> class I1(int): pass
-    >>> class I2(I1): pass
-    >>> class I3(I1): pass
-    >>> class I4(I2): pass
-
-    >>> _coerce_types(I1, I2)
-    <class 'appmetrics.statistics.I2'>
-
-    >>> _coerce_types(I2, I1)
-    <class 'appmetrics.statistics.I2'>
-
-    >>> _coerce_types(I1, float)
-    <type 'float'>
-
-    >>> _coerce_types(float, I1)
-    <type 'float'>
-
-    >>> _coerce_types(I2, I3)
-    <class 'appmetrics.statistics.I3'>
-
-    >>> _coerce_types(I4, I3)
-    Traceback (most recent call last):
-        ...
-    TypeError: cannot coerce types <class 'appmetrics.statistics.I4'> and <class 'appmetrics.statistics.I3'>
 
     Coercion is performed according to this table, where "N/A" means
     that a TypeError exception is raised.
@@ -247,18 +157,9 @@ def _coerce_types(T1, T2):
     raise TypeError('cannot coerce types %r and %r' % (T1, T2))
 
 
-def _counts(data):
+def counts(data):
     """
     Generate a table of sorted (value, frequency) pairs.
-
-    >>> _counts(None)
-    Traceback (most recent call last):
-        ...
-    TypeError: None is not iterable
-
-    >>> _counts([])
-    []
-
     """
     if data is None:
         raise TypeError('None is not iterable')
@@ -279,20 +180,6 @@ def _counts(data):
 def mean(data):
     """Return the sample arithmetic mean of data.
 
-    >>> mean([1, 2, 3, 4, 4])
-    2.8
-
-    >>> from fractions import Fraction as F
-    >>> mean([F(3, 7), F(1, 21), F(5, 3), F(1, 3)])
-    Fraction(13, 21)
-
-    >>> from decimal import Decimal as D
-    >>> mean([D("0.5"), D("0.75"), D("0.625"), D("0.375")])
-    Decimal('0.5625')
-
-    >>> mean(iter([1, 2, 3]))
-    2.0
-
     If ``data`` is empty, StatisticsError will be raised.
     """
     if iter(data) is data:
@@ -311,11 +198,6 @@ def median(data):
     When the number of data points is even, the median is interpolated by
     taking the average of the two middle values:
 
-    >>> median([1, 3, 5])
-    3
-    >>> median([1, 3, 5, 7])
-    4.0
-
     """
     data = sorted(data)
     n = len(data)
@@ -333,18 +215,6 @@ def median_low(data):
 
     When the number of data points is odd, the middle value is returned.
     When it is even, the smaller of the two middle values is returned.
-
-    >>> median_low([1, 3, 5])
-    3
-    >>> median_low([1, 3, 5, 7])
-    3
-
-    >>> median_low([])
-    Traceback (most recent call last):
-        ...
-    StatisticsError: no median for empty data
-
-
     """
     data = sorted(data)
     n = len(data)
@@ -362,16 +232,6 @@ def median_high(data):
     When the number of data points is odd, the middle value is returned.
     When it is even, the larger of the two middle values is returned.
 
-    >>> median_high([1, 3, 5])
-    3
-    >>> median_high([1, 3, 5, 7])
-    5
-
-    >>> median_high([])
-    Traceback (most recent call last):
-        ...
-    StatisticsError: no median for empty data
-
     """
     data = sorted(data)
     n = len(data)
@@ -386,29 +246,11 @@ def mode(data):
     ``mode`` assumes discrete data, and returns a single value. This is the
     standard treatment of the mode as commonly taught in schools:
 
-    >>> mode([1, 1, 2, 3, 3, 3, 3, 4])
-    3
-
-    This also works with nominal (non-numeric) data:
-
-    >>> mode(["red", "blue", "blue", "red", "green", "red", "red"])
-    'red'
-
-    >>> mode(["red", "blue", "blue", "red"])
-    Traceback (most recent call last):
-        ...
-    StatisticsError: no unique mode; found 2 equally common values
-
-    >>> mode([])
-    Traceback (most recent call last):
-        ...
-    StatisticsError: no mode for empty data
-
     If there is not exactly one most common value, ``mode`` will raise
     StatisticsError.
     """
     # Generate a table of sorted (value, frequency) pairs.
-    table = _counts(data)
+    table = counts(data)
     if len(table) == 1:
         return table[0][0]
     elif table:
@@ -460,35 +302,14 @@ def variance(data, xbar=None):
     Use this function when your data is a sample from a population. To
     calculate the variance from the entire population, see ``pvariance``.
 
-    Examples:
-
-    >>> data = [2.75, 1.75, 1.25, 0.25, 0.5, 1.25, 3.5]
-    >>> variance(data)
-    1.3720238095238095
-
     If you have already calculated the mean of your data, you can pass it as
     the optional second argument ``xbar`` to avoid recalculating it:
-
-    >>> m = mean(data)
-    >>> variance(data, m)
-    1.3720238095238095
 
     This function does not check that ``xbar`` is actually the mean of
     ``data``. Giving arbitrary values for ``xbar`` may lead to invalid or
     impossible results.
 
-    Decimals and Fractions are supported:
-
-    >>> from decimal import Decimal as D
-    >>> variance([D("27.5"), D("30.25"), D("30.25"), D("34.5"), D("41.75")])
-    Decimal('31.01875')
-
-    >>> from fractions import Fraction as F
-    >>> variance([F(1, 6), F(1, 2), F(5, 3)])
-    Fraction(67, 108)
-
-    >>> variance(iter([1, 2, 5]))
-    4.333333333333334
+    Decimals and Fractions are supported
 
     """
     if iter(data) is data:
@@ -511,40 +332,15 @@ def pvariance(data, mu=None):
     To estimate the variance from a sample, the ``variance`` function is
     usually a better choice.
 
-    Examples:
-
-    >>> data = [0.0, 0.25, 0.25, 1.25, 1.5, 1.75, 2.75, 3.25]
-    >>> pvariance(data)
-    1.25
-
     If you have already calculated the mean of the data, you can pass it as
     the optional second argument to avoid recalculating it:
 
-    >>> mu = mean(data)
-    >>> pvariance(data, mu)
-    1.25
 
     This function does not check that ``mu`` is actually the mean of ``data``.
     Giving arbitrary values for ``mu`` may lead to invalid or impossible
     results.
 
     Decimals and Fractions are supported:
-
-    >>> from decimal import Decimal as D
-    >>> pvariance([D("27.5"), D("30.25"), D("30.25"), D("34.5"), D("41.75")])
-    Decimal('24.815')
-
-    >>> from fractions import Fraction as F
-    >>> pvariance([F(1, 4), F(5, 4), F(1, 2)])
-    Fraction(13, 72)
-
-    >>> pvariance(iter([1, 2, 3]))
-    0.6666666666666666
-
-    >>> pvariance([])
-    Traceback (most recent call last):
-        ...
-    StatisticsError: pvariance requires at least one data point
 
 
     """
@@ -562,9 +358,6 @@ def stdev(data, xbar=None):
 
     See ``variance`` for arguments and other details.
 
-    >>> stdev([1.5, 2.5, 2.5, 2.75, 3.25, 4.75])
-    1.0810874155219827
-
     """
     var = variance(data, xbar)
     try:
@@ -578,9 +371,6 @@ def pstdev(data, mu=None):
 
     See ``pvariance`` for arguments and other details.
 
-    >>> pstdev([1.5, 2.5, 2.5, 2.75, 3.25, 4.75])
-    0.986893273527251
-
     """
     var = pvariance(data, mu)
     try:
@@ -591,21 +381,6 @@ def pstdev(data, mu=None):
 
 def geometric_mean(data):
     """Return the geometric mean of data
-
-    >>> geometric_mean([1.5, 2.5, 2.5, 2.75, 3.25, 4.75])
-    2.7121486566834387
-
-    >>> geometric_mean([1.5, 2.5, 2.5, 2.75, -3.25, 4.75])
-    2.2284330795786698
-
-    >>> geometric_mean([1.5, 2.5, 2.5, 2.75, 0, 4.75])
-    2.63258262293452
-
-    >>> geometric_mean([])
-    Traceback (most recent call last):
-        ...
-    StatisticsError: geometric_mean requires at least one data point
-
     """
 
     if not data:
@@ -614,26 +389,11 @@ def geometric_mean(data):
     # in order to support negative or null values
     data = [x if x > 0 else math.e if x == 0 else 1.0 for x in data]
 
-    return math.pow(math.fabs(reduce(operator.mul, data)), 1.0 / len(data))
+    return math.pow(math.fabs(functools.reduce(operator.mul, data)), 1.0 / len(data))
 
 
 def harmonic_mean(data):
     """Return the harmonic mean of data
-
-    >>> harmonic_mean([1.5, 2.5, 2.5, 2.75, 3.25, 4.75])
-    2.5547986710408086
-
-    >>> harmonic_mean([1.5, 2.5, 2.5, 2.75, -3.25, 4.75])
-    3.4619305150494095
-
-    >>> harmonic_mean([1.5, 2.5, 2.5, 2.75, 0, 4.75])
-    2.9399812441387936
-
-    >>> harmonic_mean([])
-    Traceback (most recent call last):
-        ...
-    StatisticsError: harmonic_mean requires at least one data point
-
     """
 
     if not data:
@@ -645,22 +405,6 @@ def harmonic_mean(data):
 def skewness(data):
     """Return the skewness of the data's distribution
 
-    >>> skewness([1.5, 2.5, 2.5, 2.75, 3.25, 4.75])
-    0.5193819834930741
-
-    >>> skewness([1.5, 2.5, 2.5, 2.75, -3.25, 4.75])
-    -0.8623011014727693
-
-    >>> skewness([1.5, 2.5, 2.5, 2.75, 0, 4.75])
-    0.03989169123327498
-
-    >>> skewness([])
-    Traceback (most recent call last):
-        ...
-    StatisticsError: skewness requires at least one data point
-
-    >>> skewness([1.0, 1.0, 1.0])
-    0.0
     """
 
     if not data:
@@ -678,23 +422,6 @@ def skewness(data):
 
 def kurtosis(data):
     """Return the kurtosis of the data's distribution
-
-    >>> kurtosis([1.5, 2.5, 2.5, 2.75, 3.25, 4.75])
-    -1.0485692089183762
-
-    >>> kurtosis([1.5, 2.5, 2.5, 2.75, -3.25, 4.75])
-    -0.6949222688831207
-
-    >>> kurtosis([1.5, 2.5, 2.5, 2.75, 0, 4.75])
-    -1.2034104454720884
-
-    >>> kurtosis([])
-    Traceback (most recent call last):
-        ...
-    StatisticsError: kurtosis requires at least one data point
-
-    >>> kurtosis([1.0, 1.0, 1.0])
-    0.0
 
     """
 
@@ -716,25 +443,6 @@ def percentile(data, n):
 
     Assume that the data are already sorted
 
-    >>> percentile([1.5, 2.5, 2.5, 2.75, 3.25, 4.75], 50)
-    2.5
-
-    >>> percentile([1.5, 2.5, 2.5, 2.75, 3.25, 4.75], 99)
-    4.75
-
-    >>> percentile([1.5, 2.5, 2.5, 2.75, 3.25, 4.75], 10)
-    1.5
-
-    >>> percentile([1.5, 2.5, 2.5, 2.75, 3.25, 4.75], 1)
-    Traceback (most recent call last):
-        ...
-    StatisticsError: Too few data points (6) for 1th percentile
-
-    >>> percentile([], 90)
-    Traceback (most recent call last):
-        ...
-    StatisticsError: Too few data points (0) for 90th percentile
-
     """
 
     size = len(data)
@@ -751,17 +459,6 @@ def get_histogram(data):
 
     Assume that the data are already sorted
 
-    >>> get_histogram([1.5, 2.5, 2.5, 2.75, 3.25, 4.75, 5.0])
-    [(3.5, 5), (5.5, 2), (7.5, 0)]
-
-    >>> get_histogram([1.0, 1.0, 1.0])
-    [(2.0, 3)]
-
-    >>> get_histogram([1.5])
-    Traceback (most recent call last):
-        ...
-    StatisticsError: Too few data points (1) for get_histogram
-
     """
 
     count = len(data)
@@ -773,7 +470,7 @@ def get_histogram(data):
     max_ = data[-1]
     std = stdev(data)
 
-    bins = _get_histogram_bins(min_, max_, std, count)
+    bins = get_histogram_bins(min_, max_, std, count)
 
     res = {x: 0 for x in bins}
 
@@ -783,18 +480,12 @@ def get_histogram(data):
                 res[bin_] += 1
                 break
 
-    return sorted(res.iteritems())
+    return sorted(iteritems(res))
 
 
-def _get_histogram_bins(min_, max_, std, count):
+def get_histogram_bins(min_, max_, std, count):
     """
     Return optimal bins given the input parameters
-
-    >>> _get_histogram_bins(1, 3, 0.5, 5)
-    [2, 3, 4]
-
-    >>> _get_histogram_bins(1, 2, -1/3.5, 1.0)
-    [1]
 
     """
 

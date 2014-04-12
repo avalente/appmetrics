@@ -7,7 +7,7 @@ import shutil
 from nose import tools as nt
 import mock
 
-from .. import reporter as mm, metrics
+from .. import reporter as mm, metrics, py3comp
 
 
 class TestReporter(object):
@@ -36,7 +36,7 @@ class TestReporter(object):
         mm.register(callback, schedule, tag)
 
         nt.assert_equal(len(mm.REGISTRY), 1)
-        nt.assert_equal(mm.REGISTRY.values()[0], timer.return_value)
+        nt.assert_equal(list(mm.REGISTRY.values())[0], timer.return_value)
         nt.assert_equal(
             timer.call_args_list,
             [mock.call(schedule, callback, tag)])
@@ -52,7 +52,7 @@ class TestReporter(object):
         mm.register(callback, schedule)
 
         nt.assert_equal(len(mm.REGISTRY), 1)
-        nt.assert_equal(mm.REGISTRY.values()[0], timer.return_value)
+        nt.assert_equal(list(mm.REGISTRY.values())[0], timer.return_value)
         nt.assert_equal(
             timer.call_args_list,
             [mock.call(schedule, callback, None)])
@@ -93,9 +93,9 @@ class TestReporter(object):
         now = time.time()
         sched = mm.fixed_interval_scheduler(10)
 
-        nt.assert_almost_equal(sched.next(), now+10, 0)
-        nt.assert_almost_equal(sched.next(), now+20, 0)
-        nt.assert_almost_equal(sched.next(), now+30, 0)
+        nt.assert_almost_equal(next(sched), now+10, 0)
+        nt.assert_almost_equal(next(sched), now+20, 0)
+        nt.assert_almost_equal(next(sched), now+30, 0)
 
     def test_cleanup(self):
         m1 = mock.Mock()
@@ -264,7 +264,7 @@ class TestCSVReporter(object):
             metrics.delete_metric(name)
 
     def check_file(self, file_name, header, expected_data):
-        with open(os.path.join(self.tmpdir, file_name), "rb") as ff:
+        with open(os.path.join(self.tmpdir, file_name), "r") as ff:
             reader = csv.reader(ff)
             data = list(reader)
             nt.assert_equal(data[0], list(header))
@@ -282,7 +282,7 @@ class TestCSVReporter(object):
 
         expected_files = ["h1_histogram.csv", "h2_histogram.csv", "m1_meter.csv", "m2_meter.csv"]
 
-        nt.assert_items_equal(os.listdir(self.tmpdir), expected_files)
+        py3comp.assert_items_equal(os.listdir(self.tmpdir), expected_files)
 
         hd = self.histogram_data("1234.5")
         md = self.meter_data("1234.5")
@@ -304,7 +304,7 @@ class TestCSVReporter(object):
 
         expected_files = ["h1_histogram.csv", "h2_histogram.csv", "m1_meter.csv", "m2_meter.csv"]
 
-        nt.assert_items_equal(os.listdir(self.tmpdir), expected_files)
+        py3comp.assert_items_equal(os.listdir(self.tmpdir), expected_files)
 
         hd = [self.histogram_data("1130.2"), self.histogram_data("1140.2"), self.histogram_data("1150.2")]
         md = [self.meter_data("1130.2"), self.meter_data("1140.2"), self.meter_data("1150.2")]

@@ -23,7 +23,7 @@ import threading
 import time
 
 from .exceptions import DuplicateMetricError, InvalidMetricError
-from . import histogram, simple_metrics, meter
+from . import histogram, simple_metrics, meter, py3comp
 
 
 REGISTRY = {}
@@ -56,7 +56,7 @@ def delete_metric(name):
         old_metric = REGISTRY.pop(name, None)
 
         # look for the metric name in the tags and remove it
-        for tags in TAGS.itervalues():
+        for _, tags in py3comp.iteritems(TAGS):
             if name in tags:
                 tags.remove(name)
 

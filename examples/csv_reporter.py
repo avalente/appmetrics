@@ -1,3 +1,5 @@
+from __future__ import print_function
+
 import os
 import sys
 import time
@@ -25,7 +27,7 @@ def main(directory):
         reporter.CSVReporter(directory), reporter.fixed_interval_scheduler(2), "worker")
 
     # emulate some work
-    print "Hit CTRL-C to stop the process"
+    print("Hit CTRL-C to stop the process")
     while True:
         try:
             worker()

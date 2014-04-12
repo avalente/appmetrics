@@ -1,11 +1,13 @@
 import json
-from cStringIO import StringIO
+import io
 
 import mock
-from nose.tools import assert_equal, assert_false, assert_is_instance, raises, assert_raises
+from nose.tools import (
+    assert_equal, assert_false, assert_is_instance, raises, assert_raises,
+    assert_regexp_matches)
 import werkzeug, werkzeug.test
 
-from .. import wsgi, metrics
+from .. import wsgi, metrics, py3comp
 
 
 def env(path, **kwargs):
@@ -129,7 +131,7 @@ class TestAppMetricsMiddleware(object):
         body = self.mw(env("/_app-metrics/", REQUEST_METHOD='GET'), self.start_response)
 
         expected_body = json.dumps(werkzeug.exceptions.BadRequest.description)
-        assert_equal(list(body), [expected_body])
+        assert_equal(b"".join(body), expected_body.encode('utf8'))
 
         expected_headers = [
             ('Content-Type', 'application/json'),
@@ -146,7 +148,8 @@ class TestAppMetricsMiddleware(object):
         body = self.mw(env("/_app-metrics/", REQUEST_METHOD='GET'), self.start_response)
 
         expected_body = json.dumps("bad request received")
-        assert_equal(list(body), [expected_body])
+
+        assert_equal(b"".join(body), expected_body.encode('utf8'))
 
         expected_headers = [
             ('Content-Type', 'application/json'),
@@ -171,16 +174,21 @@ class TestAppMetricsMiddleware(object):
             [mock.call("200 OK", expected_headers)]
         )
 
-        assert_equal(list(body), [self.handler.return_value])
+        expected = json.dumps("results")
+
+        assert_equal(b"".join(body), expected.encode('utf8'))
 
 
     def test_call_with_unicode(self):
-        self.handler.return_value = unicode(json.dumps("results"))
+        if py3comp.PY3:
+            self.handler.return_value = json.dumps("results")
+        else:
+            self.handler.return_value = json.dumps("results").decode('utf8')
 
         body = self.mw(env("/_app-metrics/", REQUEST_METHOD='GET'), self.start_response)
 
         expected_body = json.dumps("results")
-        assert_equal(list(body), [expected_body])
+        assert_equal(b"".join(body), expected_body.encode('utf8'))
 
         expected_headers = [
             ('Content-Type', 'application/json'),
@@ -248,7 +256,7 @@ class TestWSGIHandlers(object):
         wsgi.get_body(request)
 
     def test_get_body_bad_content(self):
-        env = {'CONTENT_LENGTH': 4, 'CONTENT_TYPE': "application/json", 'wsgi.input': StringIO("test wrong")}
+        env = {'CONTENT_LENGTH': 4, 'CONTENT_TYPE': "application/json", 'wsgi.input': io.StringIO(u"test wrong")}
         request = werkzeug.wrappers.Request(env)
 
         with assert_raises(werkzeug.exceptions.BadRequest) as exc:
@@ -256,7 +264,7 @@ class TestWSGIHandlers(object):
         assert_equal(exc.exception.description, "invalid json")
 
     def test_get_body(self):
-        env = {'CONTENT_LENGTH': 6, 'CONTENT_TYPE': "application/json", 'wsgi.input': StringIO('"test" with garbage')}
+        env = {'CONTENT_LENGTH': 6, 'CONTENT_TYPE': "application/json", 'wsgi.input': io.StringIO(u'"test" with garbage')}
         request = werkzeug.wrappers.Request(env)
 
         assert_equal(wsgi.get_body(request), 'test')
@@ -269,7 +277,7 @@ class TestWSGIHandlers(object):
     def test_handle_metric_new_invalid_type(self):
         with assert_raises(werkzeug.exceptions.BadRequest) as exc:
             wsgi.handle_metric_new(req(dict(type="xxx")), "test")
-        assert_equal(exc.exception.description, "invalid metric type: u'xxx'")
+        assert_regexp_matches(exc.exception.description, "invalid metric type: .*'xxx'")
 
     def test_handle_metric_new_app_error(self):
         wsgi.handle_metric_new(req(dict(type="gauge")), "test")
