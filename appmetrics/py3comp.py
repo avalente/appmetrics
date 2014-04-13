@@ -21,8 +21,6 @@ Python 3 compatibility
 import sys
 import json
 
-from nose import tools as nt
-
 PY3 = sys.version_info[0] == 3
 
 if PY3:
@@ -42,11 +40,15 @@ else:
 
     zip = zip
 
+
 def assert_items_equal(*args):
+    from nose import tools as nt
+
     if hasattr(nt, 'assert_items_equal'):
         return nt.assert_items_equal(*args)
     else:
         return nt.assert_equal(set(args[0]), set(args[1]))
+
 
 def json_load(stream, charset):
     # thanks very much, python 3...

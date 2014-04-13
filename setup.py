@@ -2,7 +2,7 @@ from setuptools import setup, find_packages
 
 setup(
     name = "AppMetrics",
-    version = "0.2",
+    version = "0.3",
 
     packages = find_packages(),
 
@@ -29,5 +29,7 @@ setup(
         "License :: OSI Approved :: Apache Software License",
         "Topic :: Software Development :: Quality Assurance",
         "Topic :: System :: Monitoring",
+        "Programming Language :: Python :: 2.7",
+        "Programming Language :: Python :: 3.3",
     ]
 )

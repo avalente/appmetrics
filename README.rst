@@ -393,11 +393,11 @@ A callback registration can be removed by calling ``reporter.remove`` with the i
 ``reporter`` provides a simple scheduler object, ``fixed_interval_scheduler``::
 
     >>> sched = reporter.fixed_interval_scheduler(10)
-    >>> sched.next()
+    >>> next(sched)
     1397297405.672592
-    >>> sched.next()
+    >>> next(sched)
     1397297415.672592
-    >>> sched.next()
+    >>> next(sched)
     1397297425.672592
 
 CSV reporter
@@ -413,7 +413,7 @@ Testing
 ``AppMetrics`` has an exhaustive, fully covering test suite, made up by both doctests and unit tests. To run the
 whole test suite (including the coverage test), just issue::
 
-    $ nosetests --with-doctest --with-coverage --cover-package=appmetrics --cover-erase
+    $ nosetests --with-coverage --cover-package=appmetrics --cover-erase
 
 You will need to install a couple of packages in your python environment, the list is in the
 ``"requirements.txt"`` file.
