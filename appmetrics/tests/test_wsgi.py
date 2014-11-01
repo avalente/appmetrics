@@ -4,7 +4,7 @@ import io
 import mock
 from nose.tools import (
     assert_equal, assert_false, assert_is_instance, raises, assert_raises,
-    assert_regexp_matches)
+    assert_regexp_matches, assert_items_equal)
 import werkzeug, werkzeug.test
 
 from .. import wsgi, metrics, py3comp
@@ -165,8 +165,10 @@ class TestAppMetricsMiddleware(object):
         ]
         assert_equal(
             self.start_response.call_args_list,
-            [mock.call("405 METHOD NOT ALLOWED", expected_headers)]
+            [mock.call("405 METHOD NOT ALLOWED", mock.ANY)]
         )
+
+        assert_items_equal(self.start_response.call_args_list[0][0][1], expected_headers)
 
     def test_call_ok(self):
         self.handler.return_value = json.dumps("results")
