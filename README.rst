@@ -284,8 +284,13 @@ You can group several metrics together by "tagging" them::
     {'group1': set(['test1', 'test3'])}
     >>> metrics.metrics_by_tag("group1")
     {'test1': {'arithmetic_mean': 0.0, 'skewness': 0.0, 'harmonic_mean': 0.0, 'min': 0, 'standard_deviation': 0.0, 'median': 0.0, 'histogram': [(0, 0)], 'percentile': [(50, 0.0), (75, 0.0), (90, 0.0), (95, 0.0), (99, 0.0), (99.9, 0.0)], 'n': 0, 'max': 0, 'variance': 0.0, 'geometric_mean': 0.0, 'kurtosis': 0.0}, 'test3': {'count': 0, 'five': 0.0, 'mean': 0.0, 'fifteen': 0.0, 'day': 0.0, 'one': 0.0}}
+    >>> metrics.untag('test1', 'group1')
+    True
+    >>> metrics.untag('test1', 'group1')
+    False
 
-As you can see above, three functions are available:
+
+As you can see above, four functions are available:
 
  * ``metrics.tag(metric_name, tag_name)``: tag the metric named ``<metric_name>`` with ``<tag_name>``.
    Raise ``InvalidMetricError`` if ``<metric_name>`` does not exist.
@@ -293,6 +298,9 @@ As you can see above, three functions are available:
  * ``metrics.metrics_by_tag(tag_name)``: return a dictionary with metric names as keys
    and metric values as returned by ``<metric_object>.get()``. Return an empty dictionary if ``tag_name`` does
    not exist.
+ * ``metrics.untag(metric_name, tag_name)``: remove the tag named ``<metric_name>`` from the metric named
+ ``<metric_name>``. Return True if the tag was removed, False if either the metric or the tag did not exist. When a
+   tag is no longer used, it gets implicitly removed.
 
 
 External access
@@ -300,7 +308,7 @@ External access
 
 You can access the metrics provided by ``AppMetrics`` externally by the ``WSGI``
 middleware found in ``appmetrics.wsgi.AppMetricsMiddleware``. It is a standard ``WSGI``
-middleware without external dependencies and it can be plugged in any framework supporting
+middleware with only ``werkzeug`` as external dependency and it can be plugged in any framework supporting
 the ``WSGI`` standard, for example in a ``Flask`` application::
 
     from flask import Flask
@@ -343,9 +351,9 @@ As usual, instantiate the middleware with the wrapped ``WSGI`` application; it l
 request paths starting with ``"/_app-metrics"``: if not found, the wrapped application
 is called. The following resources are defined:
 
-``/_app-metrics``
+``/_app-metrics/metrics``
   - **GET**: return the list of the registered metrics
-``/_app-metrics/<name>``
+``/_app-metrics/metrics/<name>``
   - **GET**: return the value of the given metric or ``404``.
   - **PUT**: create a new metric with the given name. The body must be a ``JSON`` object with a
     mandatory attribute named ``"type"`` which must be one of the metrics types allowed,
@@ -356,8 +364,22 @@ is called. The following resources are defined:
     attribute named ``"value"``: the notify method will be called with the given value.
     Other attributes are ignored.
     Request's ``content-type`` must be ``"application/json"``.
+  - **DELETE**: remove the metric with the given name. Return "deleted" or "not deleted".
+``/_app-metrics/tags``
+  - **GET**: return the list of registered tags
+``/_app-metrics/tags/<name>``
+  - **GET**: return the metrics tagged with the given tag. If the value of the ``GET`` parameter ``"expand"``
+    is ``"true"``, a JSON object is returned, with the name of each tagged metric as keys and corresponding values.
+    If it is ``"false"`` or not provided, the list of metric names is returned.
+    Return a ``404`` if the tag does not exist
+``/_app-metrics/tags/<tag_name>/<metric_name>``
+  - **PUT**: tag the metric named ``<metric_name>`` with ``<tag_name>``. Return a ``400`` if the given metric
+    does not exist.
+  - **DELETE**: remove the tag ``<tag_name>`` from ``<metric_name>``. Return "deleted" or "not deleted". If
+    ``<tag_name>`` is no longer used, it gets implicitly removed.
 
 
+The response body is always encoded in JSON, and the ``Content-Type`` is ``application/json``.
 The root doesn't have to be ``"/_app-metrics"``, you can customize it by providing your own to
 the middleware constructor.
 

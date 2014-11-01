@@ -1,5 +1,5 @@
 import mock
-from nose.tools import assert_equal, assert_in, raises, assert_is, assert_is_instance, assert_false
+from nose.tools import assert_equal, assert_in, raises, assert_is, assert_is_instance, assert_false, assert_true
 
 from .. import metrics as mm, exceptions, histogram, simple_metrics as simple, meter
 
@@ -393,6 +393,31 @@ class TestMetricsModule(object):
 
         assert_equal(mm.tags(), mm.TAGS)
         assert_false(mm.tags() is mm.TAGS)
+
+    def test_untag_bad_tag(self):
+        mm.TAGS = {"1": {"test1", "test3"}, "2": {"test2"}}
+
+        assert_false(mm.untag("test1", "xxx"))
+
+    def test_untag_bad_metric(self):
+        mm.TAGS = {"1": {"test1", "test3"}, "2": {"test2"}}
+
+        assert_false(mm.untag("xxx", "1"))
+
+    def test_untag(self):
+        mm.TAGS = {"1": {"test1", "test3"}, "2": {"test2"}}
+
+        assert_true(mm.untag("test1", "1"))
+
+        assert_equal(mm.TAGS, {"1": {"test3"}, "2": {"test2"}})
+
+    def test_untag_last_group(self):
+        mm.TAGS = {"1": {"test1", "test3"}, "2": {"test2"}}
+
+        assert_true(mm.untag("test1", "1"))
+        assert_true(mm.untag("test3", "1"))
+
+        assert_equal(mm.TAGS, {"2": {"test2"}})
 
     def test_metrics_by_tag_invalid_tag(self):
         mm.TAGS = {"1": {"test1", "test3"}, "2": {"test2"}}

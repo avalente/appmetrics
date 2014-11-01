@@ -38,19 +38,34 @@ class AppMetricsMiddleware(object):
 
     Instantiate me with the wrapped WSGI application. This middleware looks for request paths starting
     with "/_app-metrics": if not found, the wrapped application is called. The following resources are defined:
-    - /_app-metrics:
-        - GET: return the list of the registered metrics
-    - /_app-metrics/<name>:
-        - GET: return the value of the given metric or 404
-        - PUT: create a new metric with the given name. The body must be a JSON object with a
-               mandatory attribute named "type" which must be one of the metrics types allowed,
-               by the "metrics.METRIC_TYPES" dictionary, while the other attributes are
-               passed to the new_<type> function as keyword arguments.
-               Request's content-type must be "application/json"
-        - POST: add a new value to the metric. The body must be a JSON object with a mandatory
-                attribute named "value": the notify function will be called with the given value.
-                Other attributes are ignored.
-                Request's content-type must be "application/json"
+
+    ``/_app-metrics/metrics``
+      - **GET**: return the list of the registered metrics
+    ``/_app-metrics/metrics/<name>``
+      - **GET**: return the value of the given metric or ``404``.
+      - **PUT**: create a new metric with the given name. The body must be a ``JSON`` object with a
+        mandatory attribute named ``"type"`` which must be one of the metrics types allowed,
+        by the ``"metrics.METRIC_TYPES"`` dictionary, while the other attributes are
+        passed to the ``new_<type>`` function as keyword arguments.
+        Request's ``content-type`` must be ``"application/json"``.
+      - **POST**: add a new value to the metric. The body must be a ``JSON`` object with a mandatory
+        attribute named ``"value"``: the notify method will be called with the given value.
+        Other attributes are ignored.
+        Request's ``content-type`` must be ``"application/json"``.
+      - **DELETE**: remove the metric with the given name. Return "deleted" or "not deleted".
+    ``/_app-metrics/tags``
+      - **GET**: return the list of registered tags
+    ``/_app-metrics/tags/<name>``
+      - **GET**: return the metrics tagged with the given tag. If the value of the ``GET`` parameter ``"expand"``
+        is ``"true"``, a JSON object is returned, with the name of each tagged metric as keys and corresponding values.
+        If it is ``"false"`` or not provided, the list of metric names is returned.
+        Return a ``404`` if the tag does not exist
+    ``/_app-metrics/tags/<tag_name>/<metric_name>``
+      - **PUT**: tag the metric named ``<metric_name>`` with ``<tag_name>``. Return a ``400`` if the given metric
+        does not exist.
+      - **DELETE**: remove the tag ``<tag_name>`` from ``<metric_name>``. Return "deleted" or "not deleted". If
+        ``<tag_name>`` is no longer used, it gets implicitly removed.
+
 
     The root can be different from "/_app-metrics", you can set it on middleware constructor.
     """
@@ -69,12 +84,16 @@ class AppMetricsMiddleware(object):
 
         self.url_map = werkzeug.routing.Map([
             werkzeug.routing.Submount(self.root, [
-                werkzeug.routing.Rule("/", endpoint=handle_metrics_list, methods=['GET']),
-                werkzeug.routing.Rule("/<name>", endpoint=handle_metric_show, methods=['GET']),
-                werkzeug.routing.Rule("/<name>", endpoint=handle_metric_new, methods=['PUT']),
-                werkzeug.routing.Rule("/<name>", endpoint=handle_metric_update, methods=['POST']),
-                werkzeug.routing.Rule("/<name>", endpoint=handle_metric_delete, methods=['DELETE']),
-          ])
+                werkzeug.routing.Rule("/metrics", endpoint=handle_metrics_list, methods=['GET']),
+                werkzeug.routing.Rule("/metrics/<name>", endpoint=handle_metric_show, methods=['GET']),
+                werkzeug.routing.Rule("/metrics/<name>", endpoint=handle_metric_new, methods=['PUT']),
+                werkzeug.routing.Rule("/metrics/<name>", endpoint=handle_metric_update, methods=['POST']),
+                werkzeug.routing.Rule("/metrics/<name>", endpoint=handle_metric_delete, methods=['DELETE']),
+                werkzeug.routing.Rule("/tags", endpoint=handle_tags_list, methods=['GET']),
+                werkzeug.routing.Rule("/tags/<tag_name>", endpoint=handle_tag_show, methods=['GET']),
+                werkzeug.routing.Rule("/tags/<tag_name>/<metric_name>", endpoint=handle_tag_add, methods=['PUT']),
+                werkzeug.routing.Rule("/tags/<tag_name>/<metric_name>", endpoint=handle_untag, methods=['DELETE']),
+            ])
         ])
 
     def get_response(self, body, code, headers=None):
@@ -99,7 +118,7 @@ class AppMetricsMiddleware(object):
             return self.app(environ, start_response)
 
         except werkzeug.exceptions.HTTPException as e:
-            response = e
+            response = self.jsonize_error(e, environ)
 
         else:
             request = werkzeug.wrappers.Request(environ, populate_request=False)
@@ -187,6 +206,36 @@ def handle_metric_update(request, name):
     metric.notify(value)
 
     return ""
+
+
+def handle_tags_list(request):
+    return json.dumps(sorted(metrics.tags().keys()))
+
+
+def handle_tag_show(request, tag_name):
+    all_tags = metrics.tags()
+    if tag_name not in all_tags:
+        raise werkzeug.exceptions.NotFound(description="no such tag: {!r}".format(tag_name))
+
+    if request.args.get('expand', 'false') == 'true':
+        return json.dumps(metrics.metrics_by_tag(tag_name))
+    else:
+        return json.dumps(sorted(all_tags[tag_name]))
+
+
+def handle_tag_add(request, tag_name, metric_name):
+    try:
+        metrics.tag(metric_name, tag_name)
+    except metrics.InvalidMetricError as e:
+        raise werkzeug.exceptions.BadRequest(description=str(e))
+
+    return ""
+
+
+def handle_untag(request, tag_name, metric_name):
+    res = metrics.untag(metric_name, tag_name)
+
+    return "deleted" if res else "not deleted"
 
 
 # useful to run standalone with werkzeug's server:
