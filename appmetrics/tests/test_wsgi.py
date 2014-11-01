@@ -158,17 +158,17 @@ class TestAppMetricsMiddleware(object):
         expected_body = json.dumps(werkzeug.exceptions.MethodNotAllowed.description)
         assert_equal(b"".join(body), expected_body.encode('utf8'))
 
-        expected_headers = [
-            ('Content-Type', 'application/json'),
-            ('Allow', 'HEAD, GET'),
-            ('Content-Length', str(len(expected_body)))
-        ]
         assert_equal(
             self.start_response.call_args_list,
             [mock.call("405 METHOD NOT ALLOWED", mock.ANY)]
         )
 
-        assert_equal(set(self.start_response.call_args_list[0][0][1]), set(expected_headers))
+        headers = dict(self.start_response.call_args_list[0][0][1])
+        assert_equal(headers['Content-Type'], "application/json")
+        assert_equal(headers['Content-Length'], str(len(expected_body)))
+        allow = {x.strip() for x in headers['Allow'].split(",")}
+        assert_equal(allow, {"HEAD", "GET"})
+
 
     def test_call_ok(self):
         self.handler.return_value = json.dumps("results")
