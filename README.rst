@@ -299,7 +299,7 @@ As you can see above, four functions are available:
    and metric values as returned by ``<metric_object>.get()``. Return an empty dictionary if ``tag_name`` does
    not exist.
  * ``metrics.untag(metric_name, tag_name)``: remove the tag named ``<metric_name>`` from the metric named
- ``<metric_name>``. Return True if the tag was removed, False if either the metric or the tag did not exist. When a
+   ``<metric_name>``. Return True if the tag was removed, False if either the metric or the tag did not exist. When a
    tag is no longer used, it gets implicitly removed.
 
 
