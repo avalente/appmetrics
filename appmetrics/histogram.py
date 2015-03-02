@@ -352,6 +352,7 @@ class Histogram(object):
 
     @contextmanager
     def time(self):
+        """A context manager which times execution of a piece of code"""
         t1 = time.time()
         yield
         t2 = time.time()
