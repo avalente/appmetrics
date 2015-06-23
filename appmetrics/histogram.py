@@ -21,7 +21,6 @@ import abc
 import time
 import operator
 import math
-from contextlib import contextmanager
 
 from . import statistics, exceptions, py3comp
 
@@ -349,14 +348,6 @@ class Histogram(object):
         """Return the raw underlying data"""
 
         return self.reservoir.values
-
-    @contextmanager
-    def time(self):
-        """A context manager which times execution of a piece of code"""
-        t1 = time.time()
-        yield
-        t2 = time.time()
-        self.notify(t2 - t1)
 
     def get(self):
         """Return the computed statistics over the gathered data"""

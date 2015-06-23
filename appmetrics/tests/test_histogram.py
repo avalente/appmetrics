@@ -361,13 +361,6 @@ class TestHistogram(object):
             [mock.call(1.2)])
         nt.assert_equal(result, self.reservoir.add.return_value)
 
-    def test_time(self):
-        self.histogram.notify = mock.Mock()
-        with self.histogram.time():
-            pass
-
-        nt.assert_equal(self.histogram.notify.call_count, 1)
-
     def test_raw_data(self):
         result = self.histogram.raw_data()
         nt.assert_equal(result, self.reservoir.values)
