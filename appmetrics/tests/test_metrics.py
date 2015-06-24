@@ -372,6 +372,38 @@ class TestMetricsModule(object):
 
             return v1*v2
 
+    @mock.patch('appmetrics.histogram.Histogram.notify')
+    def test_timer(self, notify):
+        with mm.timer("test"):
+            pass
+
+        assert_equal(notify.call_count, 1)
+
+    @mock.patch('appmetrics.histogram.Histogram.notify')
+    def test_timer_multiple(self, notify):
+        with mm.timer("test"):
+            pass
+
+        with mm.timer("test"):
+            pass
+
+        assert_equal(notify.call_count, 2)
+
+    @raises(exceptions.DuplicateMetricError)
+    def test_timer_multiple_different_reservoir(self):
+        with mm.timer("test", reservoir_type="sliding_window"):
+            pass
+
+        with mm.timer("test"):
+            pass
+
+    @raises(exceptions.DuplicateMetricError)
+    def test_timer_multiple_different_type(self):
+        mm.new_gauge("test")
+
+        with mm.timer("test"):
+            pass
+
     @raises(exceptions.InvalidMetricError)
     def test_tag_invalid_name(self):
         mm.tag("test", "test")

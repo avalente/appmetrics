@@ -54,7 +54,7 @@ an internal registry, so you can access it in different places in your applicati
 
 The ``metrics`` registry is thread-safe, you can safely use it in multi-threaded web servers.
 
-Now let's decorate some function::
+Using the ``with_histogram`` decorator we can time a function::
 
     >>> import time, random
     >>> @metrics.with_histogram("test")
@@ -69,6 +69,14 @@ and let's see the results::
 
     >>> metrics.get("test")
     {'arithmetic_mean': 0.41326093673706055, 'kind': 'histogram', 'skewness': 0.2739718270714368, 'harmonic_mean': 0.14326954591313346, 'min': 0.0613858699798584, 'standard_deviation': 0.4319169569113129, 'median': 0.2831099033355713, 'histogram': [(1.0613858699798584, 3), (2.0613858699798584, 0)], 'percentile': [(50, 0.2831099033355713), (75, 0.2831099033355713), (90, 0.895287036895752), (95, 0.895287036895752), (99, 0.895287036895752), (99.9, 0.895287036895752)], 'n': 3, 'max': 0.895287036895752, 'variance': 0.18655225766752892, 'geometric_mean': 0.24964828731906127, 'kurtosis': -2.3333333333333335}
+
+It is also possible to time specific sections of the code by using the ``timer`` context manager::
+
+    >>> import time, random
+    ... def my_worker():
+    ...     with metrics.timer("test"):
+    ...         time.sleep(random.random())
+    ...
 
 Let's print the metrics data on the screen every 5 seconds::
 

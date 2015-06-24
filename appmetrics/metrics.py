@@ -18,6 +18,7 @@
 Main interface module
 """
 
+from contextlib import contextmanager
 import functools
 import threading
 import time
@@ -160,13 +161,12 @@ def new_reservoir(reservoir_type='uniform', *reservoir_args, **reservoir_kwargs)
     return reservoir_cls(*reservoir_args, **reservoir_kwargs)
 
 
-def with_histogram(name, reservoir_type="uniform", *reservoir_args, **reservoir_kwargs):
+def get_or_create_histogram(name, reservoir_type, *reservoir_args, **reservoir_kwargs):
     """
-    Time-measuring decorator: the time spent in the wrapped function is measured
-    and added to the named metric.
-    metric_args and metric_kwargs are passed to new_histogram()
+    Will return a histogram matching the given parameters or raise
+    DuplicateMetricError if it can't be created due to a name collision
+    with another histogram with different parameters.
     """
-
     reservoir = new_reservoir(reservoir_type, *reservoir_args, **reservoir_kwargs)
 
     try:
@@ -180,6 +180,18 @@ def with_histogram(name, reservoir_type="uniform", *reservoir_args, **reservoir_
         if not hmetric.reservoir.same_kind(reservoir):
             raise DuplicateMetricError(
                 "Metric {!r} already exists with a different reservoir: {}".format(name, hmetric.reservoir))
+
+    return hmetric
+
+
+def with_histogram(name, reservoir_type="uniform", *reservoir_args, **reservoir_kwargs):
+    """
+    Time-measuring decorator: the time spent in the wrapped function is measured
+    and added to the named metric.
+    metric_args and metric_kwargs are passed to new_histogram()
+    """
+
+    hmetric = get_or_create_histogram(name, reservoir_type, *reservoir_args, **reservoir_kwargs)
 
     def wrapper(f):
 
@@ -227,6 +239,21 @@ def with_meter(name, tick_interval=meter.DEFAULT_TICK_INTERVAL):
         return fun
 
     return wrapper
+
+
+@contextmanager
+def timer(name, reservoir_type="uniform", *reservoir_args, **reservoir_kwargs):
+    """
+    Time-measuring context manager: the time spent in the wrapped block
+    if measured and added to the named metric.
+    """
+
+    hmetric = get_or_create_histogram(name, reservoir_type, *reservoir_args, **reservoir_kwargs)
+
+    t1 = time.time()
+    yield
+    t2 = time.time()
+    hmetric.notify(t2 - t1)
 
 
 def tag(name, tag_name):

@@ -32,15 +32,16 @@ DEFAULT_EXPONENTIAL_DECAY_FACTOR = 0.015
 
 def search_greater(values, target):
     """
-    Return the first index for which target is greater or equal to the first item of the tuple found in values
+    Return the first index for which target is greater or equal to the first
+    item of the tuple found in values
     """
     first = 0
     last = len(values)
 
     while first < last:
-        middle = (first+last)//2
+        middle = (first + last) // 2
         if values[middle][0] < target:
-            first = middle+1
+            first = middle + 1
         else:
             last = middle
 
@@ -51,13 +52,15 @@ class ReservoirBase(object):
     __metaclass__ = abc.ABCMeta
 
     """
-    Base class for reservoirs. Subclass and override _do_add, _get_values and _same_parameters
+    Base class for reservoirs. Subclass and override _do_add, _get_values and
+    _same_parameters
     """
 
     def add(self, value):
         """
         Add a value to the reservoir
-        The value will be casted to a floating-point, so a TypeError or a ValueError may be raised.
+        The value will be casted to a floating-point, so a TypeError or a
+        ValueError may be raised.
         """
 
         if not isinstance(value, float):
@@ -73,7 +76,6 @@ class ReservoirBase(object):
 
         return self._get_values()
 
-
     @property
     def sorted_values(self):
         """
@@ -84,7 +86,8 @@ class ReservoirBase(object):
 
     def same_kind(self, other):
         """
-        Return True if "other" is an object of the same type and it was instantiated with the same parameters
+        Return True if "other" is an object of the same type and it was
+        instantiated with the same parameters
         """
 
         return type(self) is type(other) and self._same_parameters(other)
@@ -104,15 +107,17 @@ class ReservoirBase(object):
     @abc.abstractmethod
     def _same_parameters(self, other):
         """
-        Return True if this object has been instantiated with the same parameters as "other".
+        Return True if this object has been instantiated with the same
+        parameters as "other".
         Override in subclasses
         """
 
 
 class UniformReservoir(ReservoirBase):
     """
-    A random sampling reservoir of floating-point values. Uses Vitter's Algorithm R to produce a statistically
-    representative sample (http://www.cs.umd.edu/~samir/498/vitter.pdf)
+    A random sampling reservoir of floating-point values. Uses Vitter's
+    Algorithm R to produce a statistically representative sample
+    (http://www.cs.umd.edu/~samir/498/vitter.pdf)
     """
 
     def __init__(self, size=DEFAULT_UNIFORM_RESERVOIR_SIZE):
@@ -129,8 +134,8 @@ class UniformReservoir(ReservoirBase):
                 self._values[self.count] = value
                 changed = True
             else:
-                # not randint() because it yields different values on python 3, it
-                # would be a nightmare to test.
+                # not randint() because it yields different values on
+                # python 3, it would be a nightmare to test.
                 k = int(random.uniform(0, self.count))
                 if k < self.size:
                     self._values[k] = value
@@ -200,7 +205,8 @@ class SlidingTimeWindowReservoir(ReservoirBase):
     def tick(self, now):
         target = now - self.window_size
 
-        # the values are sorted by the first element (timestamp), so let's perform a dichotomic search
+        # the values are sorted by the first element (timestamp), so let's
+        # perform a dichotomic search
         idx = search_greater(self._values, target)
 
         # older values found, discard them
@@ -229,14 +235,16 @@ class ExponentialDecayingReservoir(ReservoirBase):
     See http://dimacs.rutgers.edu/~graham/pubs/papers/fwddecay.pdf
     """
 
-    #TODO: replace the sort()s with a proper data structure (btree/skiplist). However, since the list
-    # is keep sorted (and it should be very small), the sort() shouldn't dramatically slow down
-    # the insertions, also considering that the search can be log(n) in that way
+    # TODO: replace the sort()s with a proper data structure (btree/skiplist).
+    # However, since the list is keep sorted (and it should be very small),
+    # the sort() shouldn't dramatically slow down the insertions, also
+    # considering that the search can be log(n) in that way
 
     RESCALE_THRESHOLD = 3600
     EPSILON = 1e-12
 
-    def __init__(self, size=DEFAULT_UNIFORM_RESERVOIR_SIZE, alpha=DEFAULT_EXPONENTIAL_DECAY_FACTOR):
+    def __init__(self, size=DEFAULT_UNIFORM_RESERVOIR_SIZE,
+                 alpha=DEFAULT_EXPONENTIAL_DECAY_FACTOR):
         self.size = size
         self.alpha = alpha
         self.start_time = time.time()
@@ -249,13 +257,15 @@ class ExponentialDecayingReservoir(ReservoirBase):
 
     def _lookup(self, timestamp):
         """
-        Return the index of the value associated with "timestamp" if any, else None.
-        Since the timestamps are floating-point values, they are considered equal if their absolute
-        difference is smaller than self.EPSILON
+        Return the index of the value associated with "timestamp" if any, else
+        None. Since the timestamps are floating-point values, they are
+        considered equal if their absolute difference is smaller than
+        self.EPSILON
         """
 
         idx = search_greater(self._values, timestamp)
-        if idx < len(self._values) and math.fabs(self._values[idx][0] - timestamp) < self.EPSILON:
+        if (idx < len(self._values)
+                and math.fabs(self._values[idx][0] - timestamp) < self.EPSILON):
             return idx
         return None
 
@@ -274,7 +284,7 @@ class ExponentialDecayingReservoir(ReservoirBase):
         self.rescale(now)
 
         rnd = random.random()
-        weighted_time = self.weight(now-self.start_time) / rnd
+        weighted_time = self.weight(now - self.start_time) / rnd
 
         changed = False
 
@@ -305,13 +315,12 @@ class ExponentialDecayingReservoir(ReservoirBase):
                 original_values = self._values[:]
                 self._values = []
                 for i, (k, v) in enumerate(original_values):
-                    k *= math.exp(-self.alpha * (now-self.start_time))
+                    k *= math.exp(-self.alpha * (now - self.start_time))
                     self._put(k, v)
 
                 self.count = len(self._values)
                 self.start_time = now
                 self.next_scale_time = self.start_time + self.RESCALE_THRESHOLD
-
 
     def _get_values(self):
         return [y for x, y in self._values[:max(self.count, self.size)]]
@@ -324,7 +333,8 @@ class ExponentialDecayingReservoir(ReservoirBase):
 
 
 class Histogram(object):
-    """A metric which calculates some statistics over the distribution of some values"""
+    """A metric which calculates some statistics over the distribution of some
+    values"""
 
     def __init__(self, reservoir):
         self.reservoir = reservoir
