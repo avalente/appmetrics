@@ -216,6 +216,9 @@ def test_harmonic_mean():
         fun = lambda data, expected: nt.assert_almost_equal(mm.harmonic_mean(data), expected)
         yield fun, data, expected
 
+def test_harmonic_mean_zero_divisor():
+    assert mm.harmonic_mean([0.0]) == 0.0
+
 @nt.raises(StatisticsError)
 def test_harmonic_mean_empty():
     mm.harmonic_mean([])
